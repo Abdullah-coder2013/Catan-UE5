@@ -27,3 +27,14 @@ enum class EPlacementNode : uint8
     Road,
     Settlement
 };
+
+UENUM(BlueprintType)
+enum class EResourceType : uint8
+{
+    None,
+    Wood,
+    Brick,
+    Sheep,
+    Wheat,
+    Ore
+};

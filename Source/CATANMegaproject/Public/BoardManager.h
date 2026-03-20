@@ -46,5 +46,6 @@ public:
 	// Called every frame
 	void GenerateBoard();
 	FVector AxialToWorld(int32 Q, int32 R) const;
+	TArray<AHexTile*> GetHexTiles() const { return HexTiles; }
 
 };

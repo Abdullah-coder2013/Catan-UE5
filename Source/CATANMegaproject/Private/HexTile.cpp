@@ -29,6 +29,27 @@ void AHexTile::InitializeHex(EHexType Type, int32 Token, int32 InQ, int32 InR, b
 	isInitialized = bInitialized;
 }
 
+EResourceType AHexTile::HexTypeToResource() const
+{
+	switch (static_cast<uint8>(HexType))
+	{
+	case static_cast<uint8>(EHexType::Desert):
+		return EResourceType::None;
+	case static_cast<uint8>(EHexType::Forest):
+		return EResourceType::Wood;
+	case static_cast<uint8>(EHexType::Mountain):
+		return EResourceType::Ore;
+	case static_cast<uint8>(EHexType::Pasture):
+		return EResourceType::Sheep;
+	case static_cast<uint8>(EHexType::Fields):
+		return EResourceType::Wheat;
+	case static_cast<uint8>(EHexType::Hill):
+		return EResourceType::Brick;
+	default:
+		return EResourceType::None;
+	}
+}									
+
 // Called every frame
 void AHexTile::Tick(float DeltaTime)
 {

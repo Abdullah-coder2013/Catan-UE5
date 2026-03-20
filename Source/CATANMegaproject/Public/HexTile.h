@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "CatanSharedValues.h"
 #include "HexTile.generated.h"
 
 class AHexVertex;
@@ -47,6 +48,9 @@ public:
 	TArray<AHexVertex*> Vertices;
 
 	void InitializeHex(EHexType Type, int32 Token, int32 InQ, int32 InR, bool bInitialized);
+
+	int32 GetNumberToken() const { return NumberToken; }
+	EResourceType HexTypeToResource() const;
 
 protected:
 	// Called when the game starts or when spawned

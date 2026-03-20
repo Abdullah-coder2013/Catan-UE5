@@ -32,7 +32,14 @@ class CATANMEGAPROJECT_API ACatanPlayerController : public APlayerController
 
 	UPROPERTY(EditAnywhere, Category = "Input")
 	UInputAction* ClickAction;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Input")
+	UInputAction* SwitchIdentityAction;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Input")
+	UInputAction* RollDiceAction;
 	ACatanPlayerController();
+
+	void ChangeIdentity();
+	void RollDice();
 
 	protected:
 	virtual void SetupInputComponent() override;

@@ -5,6 +5,7 @@
 #include "EnhancedInputComponent.h"
 #include "HexVertex.h"
 #include "AHexEdge.h"
+#include "GameModeCPP.h"
 #include "EnhancedInputSubsystems.h"
 
 
@@ -25,6 +26,16 @@ void ACatanPlayerController::BeginPlay()
         Subsystem->AddMappingContext(CatanMappingContext, 0);
     }
 }
+void ACatanPlayerController::RollDice()
+{
+    GetWorld()->GetAuthGameMode<AGameModeCPP>()->RollDice();
+}
+
+void ACatanPlayerController::ChangeIdentity()
+{
+    PlayerColor = static_cast<EPlayerColor>((static_cast<uint8>(PlayerColor) + 1) % 5);
+    UE_LOG(LogTemp, Warning, TEXT("Player color changed to: %d"), (int32)PlayerColor);
+}
 
 void ACatanPlayerController::SetupInputComponent()
 {
@@ -32,7 +43,9 @@ void ACatanPlayerController::SetupInputComponent()
 
     if (UEnhancedInputComponent* EnhancedInput = Cast<UEnhancedInputComponent>(InputComponent))
     {
-        EnhancedInput->BindAction(ClickAction, ETriggerEvent::Triggered, this, &ACatanPlayerController::OnClick);
+        EnhancedInput->BindAction(ClickAction, ETriggerEvent::Started, this, &ACatanPlayerController::OnClick);
+        EnhancedInput->BindAction(SwitchIdentityAction, ETriggerEvent::Started, this, &ACatanPlayerController::ChangeIdentity);
+        EnhancedInput->BindAction(RollDiceAction, ETriggerEvent::Started, this, &ACatanPlayerController::RollDice);
     }
 }
 
@@ -63,5 +76,5 @@ void ACatanPlayerController::OnClick(const FInputActionValue& Value)
             }
         }
     }
-}
+} 
 

@@ -2,9 +2,9 @@
 
 
 #include "GameModeCPP.h"
-#include "CatanPlayerState.h"
 #include "BoardManager.h"
 #include "HexTile.h"
+#include "CatanPlayerController.h"
 #include "HexVertex.h"
 
 // Beginplay
@@ -21,18 +21,117 @@ void AGameModeCPP::BeginPlay()
     {
         HexTiles = BoardManager->GetHexTiles();
     }
-    // Get all players
-    for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+    // Initialize default player colors if not set
+    if (DefaultColors.Num() == 0)
     {
-        if (ACatanPlayerState* PS = It->Get()->GetPlayerState<ACatanPlayerState>())
-        {
-            Players.Add(PS);
+        DefaultColors = { EPlayerColor::Red, EPlayerColor::Blue, EPlayerColor::White, EPlayerColor::Orange };
+    }
+    StartGame();
+}
+
+void AGameModeCPP::InitializePlayers(TArray<EPlayerColor> PlayerColors)
+{
+    Players.Empty();
+    for (EPlayerColor Color : PlayerColors)
+    {
+        Players.Add(FPlayerData(Color));
+    }
+}
+
+FPlayerData& AGameModeCPP::GetCurrentPlayer()
+{
+    return Players[CurrentPlayerIndex];
+}
+
+void AGameModeCPP::AdvanceSetup() {
+    // Switch between Settlement and Road placement
+    if (CurrentSetupStep == EPlacementNode::Settlement) {
+        CurrentSetupStep = EPlacementNode::Road;
+    }
+    else if (CurrentSetupStep == EPlacementNode::Road) {
+        CurrentSetupStep = EPlacementNode::Settlement;
+        // Move to next player after completing both settlement and road
+        if (!bSetupReversed && CurrentPlayerIndex < PlayerOrder.Num() - 1) {
+            CurrentPlayerIndex++;
+        }
+        else if (!bSetupReversed && CurrentPlayerIndex == PlayerOrder.Num() - 1) {
+            bSetupReversed = true;
+        }
+        else if (bSetupReversed && CurrentPlayerIndex > 0) {
+            CurrentPlayerIndex--;
+        }
+        else if (bSetupReversed && CurrentPlayerIndex == 0) {
+            bSetupReversed = false;
+            CurrentPhase = EGamePhase::MainGame;
+            ChangePlayer();
+            StartMainGame();
+            return;
         }
     }
+    ChangePlayer();
+}
+
+void AGameModeCPP::ChangePlayer()
+{
+    ACatanPlayerController* PC = Cast<ACatanPlayerController>(GetWorld()->GetFirstPlayerController());
+    if (PC)
+    {
+        PC->ChangePlayer(GetCurrentPlayer());
+        PC->CurrentPlacementNode = CurrentSetupStep;
+    }
+}
+
+void AGameModeCPP::StartMainGame()
+{
+    CurrentPhase = EGamePhase::MainGame;
+    CurrentTurnStep = ETurnStep::RollDice;
+    AdvanceStep();
+}
+
+void AGameModeCPP::EndTurn() {
+    if (CurrentPhase == EGamePhase::Setup) {
+        AdvanceSetup();
+    }
+    else if (CurrentPhase == EGamePhase::MainGame) {
+        AdvanceTurn();
+    }
+    ChangePlayer();
+}
+
+void AGameModeCPP::AdvanceStep() {
+    UE_LOG(LogTemp, Warning, TEXT("AdvanceStep called. CurrentTurnStep: %d"), (int32)CurrentTurnStep);
+    if (CurrentTurnStep == ETurnStep::RollDice) {
+        RollDice();
+        CurrentTurnStep = ETurnStep::Build;
+    }
+    else if (CurrentTurnStep == ETurnStep::Build) {
+        CurrentTurnStep = ETurnStep::RollDice;
+        EndTurn();
+    }
+}
+
+void AGameModeCPP::AdvanceTurn() {
+    CurrentPlayerIndex = (CurrentPlayerIndex + 1) % PlayerOrder.Num();
+    CurrentTurnStep = ETurnStep::RollDice;
+}
+
+void AGameModeCPP::StartGame() {
+    CurrentPhase = EGamePhase::Setup;
+    CurrentTurnStep = ETurnStep::None;
+    CurrentPlayerIndex = 0;
+    PlayerOrder = DefaultColors;
+    bSetupReversed = false;
+    CurrentSetupStep = EPlacementNode::Road;
+    InitializePlayers(DefaultColors);
+    ChangePlayer();
+    AdvanceSetup();
 }
 
 void AGameModeCPP::DistributeResources(int32 DiceRoll)
 {
+    UE_LOG(LogTemp, Warning, TEXT("DistributeResources called with DiceRoll: %d"), DiceRoll);
+    UE_LOG(LogTemp, Warning, TEXT("HexTiles count: %d, Players count: %d"), HexTiles.Num(), Players.Num());
+
     TArray<AHexTile*> RelevantTiles;
     for (AHexTile* Tile : BoardManager->GetHexTiles())
     {
@@ -43,41 +142,55 @@ void AGameModeCPP::DistributeResources(int32 DiceRoll)
     }
     for (AHexTile* Tile : RelevantTiles)
     {
+        UE_LOG(LogTemp, Warning, TEXT("Processing tile: %s, Token: %d"), *Tile->GetName(), Tile->GetNumberToken());
         // loop through vertices
         for (AHexVertex* Vertex : Tile->Vertices)
         {
+            UE_LOG(LogTemp, Warning, TEXT("Vertex %s - isOccupied: %d, occupiedBy: %d, settlementType: %d"),
+                *Vertex->GetName(), Vertex->isOccupied, (int32)Vertex->occupiedBy, (int32)Vertex->settlementType);
             if (Vertex && Vertex->isOccupied)
             {
                 if (Vertex->settlementType == ESettlementType::Settlement)
                 {
                     // Add 1 resource to the player
-                    for (ACatanPlayerState* Player : Players)
+                    for (FPlayerData& Player : Players)
                     {
-                        if (Player && Player->PlayerColor == Vertex->occupiedBy)
+                        if (Player.PlayerColor == Vertex->occupiedBy)
                         {
-                            Player->AddResource(Tile->HexTypeToResource(), 1);
+                            Player.AddResource(Tile->HexTypeToResource(), 1);
                         }
-                        UE_LOG(LogTemp, Warning, TEXT("Player %d received %d of resource %d"), 
-                        (int32)Player->PlayerColor, 1, (int32)Tile->HexTypeToResource());
+                        UE_LOG(LogTemp, Warning, TEXT("Player %d received %d of resource %d"),
+                        (int32)Player.PlayerColor, 1, (int32)Tile->HexTypeToResource());
                     }
                 }
                 else if (Vertex->settlementType == ESettlementType::City)
                 {
                     // Add 2 resources to the player
-                    for (ACatanPlayerState* Player : Players)
+                    for (FPlayerData& Player : Players)
                     {
-                        if (Player && Player->PlayerColor == Vertex->occupiedBy)
+                        if (Player.PlayerColor == Vertex->occupiedBy)
                         {
-                            Player->AddResource(Tile->HexTypeToResource(), 2);
+                            Player.AddResource(Tile->HexTypeToResource(), 2);
                         }
-                        UE_LOG(LogTemp, Warning, TEXT("Player %d received %d of resource %d"), 
-                        (int32)Player->PlayerColor, 2, (int32)Tile->HexTypeToResource());
+                        UE_LOG(LogTemp, Warning, TEXT("Player %d received %d of resource %d"),
+                        (int32)Player.PlayerColor, 2, (int32)Tile->HexTypeToResource());
                     }
                 }
             }
         }
     }
-    
+    for (FPlayerData& Player : Players)
+    {
+        UE_LOG(LogTemp, Log, TEXT("Player %d now has: Lumber=%d, Brick=%d, Wool=%d, Grain=%d, Ore=%d"),
+        (int32)Player.PlayerColor,
+        Player.GetResourceAmount(EResourceType::Wood),
+        Player.GetResourceAmount(EResourceType::Brick),
+        Player.GetResourceAmount(EResourceType::Sheep),
+        Player.GetResourceAmount(EResourceType::Wheat),
+        Player.GetResourceAmount(EResourceType::Ore));
+    }
+    UE_LOG(LogTemp, Log, TEXT("Resource distribution complete for dice roll: %d"), DiceRoll);
+
 }
 
 void AGameModeCPP::RollDice()

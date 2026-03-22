@@ -13,7 +13,7 @@
 class UInputMappingContext;
 class UInputAction;
 /**
- * 
+ *
  */
 UCLASS()
 class CATANMEGAPROJECT_API ACatanPlayerController : public APlayerController
@@ -33,13 +33,14 @@ class CATANMEGAPROJECT_API ACatanPlayerController : public APlayerController
 	UPROPERTY(EditAnywhere, Category = "Input")
 	UInputAction* ClickAction;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Input")
-	UInputAction* SwitchIdentityAction;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Input")
-	UInputAction* RollDiceAction;
+	UInputAction* AdvanceStepAction;
 	ACatanPlayerController();
 
-	void ChangeIdentity();
-	void RollDice();
+	void ChangePlayer(FPlayerData NewPlayer);
+	void NextStep();
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Player Properties")
+	FPlayerData CurrentPlayerPlaying;
 
 	protected:
 	virtual void SetupInputComponent() override;
@@ -47,5 +48,5 @@ class CATANMEGAPROJECT_API ACatanPlayerController : public APlayerController
 
 	private:
 	void OnClick(const FInputActionValue& Value);
-	
+
 };

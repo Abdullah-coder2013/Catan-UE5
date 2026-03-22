@@ -5,7 +5,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/GameModeBase.h"
 #include "BoardManager.h"
-#include "CatanPlayerState.h"
+#include "CatanSharedValues.h"
 #include "GameModeCPP.generated.h"
 
 
@@ -21,11 +21,37 @@ class CATANMEGAPROJECT_API AGameModeCPP : public AGameModeBase
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GameMode Settings")
 	TSubclassOf<ABoardManager> BoardManagerClass;
 
-	UPROPERTY()
-	TArray<ACatanPlayerState*> Players;
+	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Players")
+	TArray<FPlayerData> Players;
 
 	void RollDice();
 	void DistributeResources(int32 DiceRoll);
+	void InitializePlayers(TArray<EPlayerColor> PlayerColors);
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Turn System Settings")
+	EGamePhase CurrentPhase;
+	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Turn System Settings")
+	ETurnStep CurrentTurnStep;
+	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Players")
+	int32 CurrentPlayerIndex;
+	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Turn System Settings")
+	TArray<EPlayerColor> PlayerOrder;
+	UPROPERTY()
+	bool bSetupReversed;
+	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Turn System Settings")
+	EPlacementNode CurrentSetupStep;
+
+	void StartGame();
+	void EndTurn();
+	FPlayerData& GetCurrentPlayer();
+	void AdvanceSetup();
+	void AdvanceTurn();
+	void AdvanceStep();
+	void ChangePlayer();
+	void StartMainGame();
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Players")
+	TArray<EPlayerColor> DefaultColors;
 
 	protected:
 	virtual void BeginPlay() override;
@@ -35,5 +61,5 @@ class CATANMEGAPROJECT_API AGameModeCPP : public AGameModeBase
 	TArray<AHexTile*> HexTiles;
 	UPROPERTY()
 	ABoardManager* BoardManager;
-	
+
 };

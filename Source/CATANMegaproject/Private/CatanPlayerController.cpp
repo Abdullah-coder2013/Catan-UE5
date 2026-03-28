@@ -21,6 +21,7 @@ void ACatanPlayerController::ChangePlayer(FPlayerData NewPlayer)
 {
     CurrentPlayerPlaying = NewPlayer;
     PlayerColor = NewPlayer.PlayerColor;
+    Resources = NewPlayer.Resources;
 }
 
 void ACatanPlayerController::NextStep()
@@ -57,8 +58,8 @@ void ACatanPlayerController::SetupInputComponent()
 void ACatanPlayerController::OnClick(const FInputActionValue& Value)
 {
     AGameModeCPP* GameMode = GetWorld()->GetAuthGameMode<AGameModeCPP>();
-    bool bShouldPlaceSettlement;
-    bool bShouldPlaceRoad;
+    bool bCanPlaceSettlement;
+    bool bCanPlaceRoad;
     if (!GameMode)
     {
         return;
@@ -70,13 +71,13 @@ void ACatanPlayerController::OnClick(const FInputActionValue& Value)
     {
         if (GameMode->CurrentSetupStep == EPlacementNode::Settlement)
         {
-            bShouldPlaceSettlement = true;
-            bShouldPlaceRoad = false;
+            bCanPlaceSettlement = true;
+            bCanPlaceRoad = false;
         }
         else if (GameMode->CurrentSetupStep == EPlacementNode::Road)
         {
-            bShouldPlaceSettlement = false;
-            bShouldPlaceRoad = true;
+            bCanPlaceSettlement = false;
+            bCanPlaceRoad = true;
         }
         else
         {
@@ -84,10 +85,10 @@ void ACatanPlayerController::OnClick(const FInputActionValue& Value)
             return;
         }
     }
-    else if (GameMode->CurrentTurnStep == ETurnStep::Build)
+    else if (GameMode->CurrentTurnStep == ETurnStep::DynamicEnvironment)
     {
-        bShouldPlaceSettlement = true; // In a full implementation, you'd check if the player is trying to place a road or settlement
-        bShouldPlaceRoad = true;
+        bCanPlaceSettlement = true; // In a full implementation, you'd check if the player is trying to place a road or settlement
+        bCanPlaceRoad = true;
     }
     else
     {
@@ -111,23 +112,52 @@ void ACatanPlayerController::OnClick(const FInputActionValue& Value)
 
             if (AHexVertex* Vertex = Cast<AHexVertex>(HitActor))
             {
-                if (bShouldPlaceSettlement)
+                if (bCanPlaceSettlement)
                 {
-                    Vertex->TryPlaceSettlement(PlayerColor, ESettlementType::Settlement);
-                    if (GameMode->CurrentPhase == EGamePhase::Setup)
+                    if (GameMode->GetCurrentPlayer().CanBuild(EBuildable::Settlement) || GameMode->CurrentPhase == EGamePhase::Setup)
                     {
-                        GameMode->AdvanceSetup();
+                        if (Vertex->TryPlaceSettlement(PlayerColor, ESettlementType::Settlement))
+                        {
+                            GameMode->GetCurrentPlayer().SpendResourceFor(EBuildable::Settlement);
+                            GameMode->GetCurrentPlayer().AddVictoryPoint(1);
+                            if (GameMode->CurrentPhase == EGamePhase::Setup)
+                            {
+                                GameMode->AdvanceSetup(false);
+                            }
+                        }
+                        else
+                        {
+                            UE_LOG(LogTemp, Warning, TEXT("Cannot place settlement here!"));
+                        }
+                    }
+                    else
+                    {
+                        UE_LOG(LogTemp, Warning, TEXT("%d does not have enough resources to build a settlement!"), (int32)CurrentPlayerPlaying.PlayerColor);
                     }
                 }
             }
             else if (AAHexEdge* Edge = Cast<AAHexEdge>(HitActor))
             {
-                if (bShouldPlaceRoad)
+                if (bCanPlaceRoad)
                 {
-                    Edge->TryPlaceRoad(PlayerColor);
-                    if (GameMode->CurrentPhase == EGamePhase::Setup)
+                    if (GameMode->GetCurrentPlayer().CanBuild(EBuildable::Road) || GameMode->CurrentPhase == EGamePhase::Setup)
                     {
-                        GameMode->AdvanceSetup();
+                        if (Edge->TryPlaceRoad(PlayerColor))
+                        {
+                            GameMode->GetCurrentPlayer().SpendResourceFor(EBuildable::Road);
+                            if (GameMode->CurrentPhase == EGamePhase::Setup)
+                            {
+                                GameMode->AdvanceSetup(false);
+                            }
+                        }
+                        else
+                        {
+                            UE_LOG(LogTemp, Warning, TEXT("Cannot place road here!"));
+                        }
+                    }
+                    else
+                    {
+                        UE_LOG(LogTemp, Warning, TEXT("%d does not have enough resources to build a road!"), (int32)CurrentPlayerPlaying.PlayerColor);
                     }
                 }
             }

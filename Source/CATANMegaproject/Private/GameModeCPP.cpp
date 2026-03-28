@@ -6,11 +6,24 @@
 #include "HexTile.h"
 #include "CatanPlayerController.h"
 #include "HexVertex.h"
+#include "DebugUserWidget.h"
+#include "Blueprint/UserWidget.h"
 
 // Beginplay
 void AGameModeCPP::BeginPlay()
 {
     Super::BeginPlay();
+
+    if (IsValid(DebugWidgetClass))
+    {
+        DebugWidget = Cast<UDebugUserWidget>(CreateWidget(GetWorld(), DebugWidgetClass));
+        if (DebugWidget)
+        {
+            DebugWidget->AddToViewport();
+        }
+    }
+    
+    
     // Spawn the BoardManager
     if (BoardManagerClass)
     {
@@ -29,6 +42,25 @@ void AGameModeCPP::BeginPlay()
     StartGame();
 }
 
+void AGameModeCPP::Tick(float DeltaTime)
+{
+    Super::Tick(DeltaTime);
+
+    if (DebugWidget)
+    {
+        DebugWidget->SetCurrentPlayerUI(GetCurrentPlayer().PlayerColor);
+        DebugWidget->SetCurrentTurnStepUI(CurrentTurnStep, CurrentSetupStep, CurrentPhase);
+        DebugWidget->SetCurrentPhaseUI(CurrentPhase);
+        DebugWidget->SetResourceUI(GetCurrentPlayer().Resources);
+    }
+}
+
+AGameModeCPP::AGameModeCPP()
+{
+    PrimaryActorTick.bCanEverTick = true;
+    PrimaryActorTick.bStartWithTickEnabled = true;
+}
+
 void AGameModeCPP::InitializePlayers(TArray<EPlayerColor> PlayerColors)
 {
     Players.Empty();
@@ -43,13 +75,17 @@ FPlayerData& AGameModeCPP::GetCurrentPlayer()
     return Players[CurrentPlayerIndex];
 }
 
-void AGameModeCPP::AdvanceSetup() {
+void AGameModeCPP::AdvanceSetup(bool bFirstTimeCalled) {
     // Switch between Settlement and Road placement
     if (CurrentSetupStep == EPlacementNode::Settlement) {
         CurrentSetupStep = EPlacementNode::Road;
     }
     else if (CurrentSetupStep == EPlacementNode::Road) {
         CurrentSetupStep = EPlacementNode::Settlement;
+        if (bFirstTimeCalled)
+        {
+            return;
+        }
         // Move to next player after completing both settlement and road
         if (!bSetupReversed && CurrentPlayerIndex < PlayerOrder.Num() - 1) {
             CurrentPlayerIndex++;
@@ -67,8 +103,9 @@ void AGameModeCPP::AdvanceSetup() {
             StartMainGame();
             return;
         }
+        ChangePlayer();
+        return;
     }
-    ChangePlayer();
 }
 
 void AGameModeCPP::ChangePlayer()
@@ -85,12 +122,12 @@ void AGameModeCPP::StartMainGame()
 {
     CurrentPhase = EGamePhase::MainGame;
     CurrentTurnStep = ETurnStep::RollDice;
-    AdvanceStep();
+    // AdvanceStep();
 }
 
 void AGameModeCPP::EndTurn() {
     if (CurrentPhase == EGamePhase::Setup) {
-        AdvanceSetup();
+        AdvanceSetup(false);
     }
     else if (CurrentPhase == EGamePhase::MainGame) {
         AdvanceTurn();
@@ -102,9 +139,9 @@ void AGameModeCPP::AdvanceStep() {
     UE_LOG(LogTemp, Warning, TEXT("AdvanceStep called. CurrentTurnStep: %d"), (int32)CurrentTurnStep);
     if (CurrentTurnStep == ETurnStep::RollDice) {
         RollDice();
-        CurrentTurnStep = ETurnStep::Build;
+        CurrentTurnStep = ETurnStep::DynamicEnvironment;
     }
-    else if (CurrentTurnStep == ETurnStep::Build) {
+    else if (CurrentTurnStep == ETurnStep::DynamicEnvironment) {
         CurrentTurnStep = ETurnStep::RollDice;
         EndTurn();
     }
@@ -123,8 +160,7 @@ void AGameModeCPP::StartGame() {
     bSetupReversed = false;
     CurrentSetupStep = EPlacementNode::Road;
     InitializePlayers(DefaultColors);
-    ChangePlayer();
-    AdvanceSetup();
+    AdvanceSetup(true);
 }
 
 void AGameModeCPP::DistributeResources(int32 DiceRoll)

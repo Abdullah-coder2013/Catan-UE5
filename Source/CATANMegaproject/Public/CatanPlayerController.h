@@ -26,6 +26,9 @@ class CATANMEGAPROJECT_API ACatanPlayerController : public APlayerController
 	EPlayerColor PlayerColor;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Player Properties")
 	EPlacementNode CurrentPlacementNode;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Player Properties")
+	TMap<EResourceType, int32> Resources;
 
 	UPROPERTY(EditAnywhere, Category = "Input")
 	UInputMappingContext* CatanMappingContext;

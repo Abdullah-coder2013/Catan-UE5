@@ -21,6 +21,16 @@ enum class ESettlementType : uint8
 };
 
 UENUM(BlueprintType)
+enum class EBuildable : uint8
+{
+    None,
+    Settlement,
+    City,
+    Road,
+    Development
+};
+
+UENUM(BlueprintType)
 enum class EPlacementNode : uint8
 {
     None,
@@ -39,6 +49,15 @@ enum class EResourceType : uint8
     Ore
 };
 
+USTRUCT(BlueprintType)
+struct FResourceCosts
+{
+    GENERATED_BODY()
+
+    UPROPERTY()
+    TMap<EResourceType, int32> Costs;
+};
+
 UENUM(BlueprintType)
 enum class EGamePhase : uint8
 {
@@ -51,8 +70,7 @@ enum class ETurnStep : uint8
 {
     None,
     RollDice,
-    Trade,
-    Build,
+    DynamicEnvironment,
     EndTurn
 };
 
@@ -63,11 +81,49 @@ struct FPlayerData
 
     UPROPERTY(BlueprintReadWrite, Category = "Player")
     EPlayerColor PlayerColor = EPlayerColor::None;
+    
+    UPROPERTY(BlueprintReadWrite, Category = "Player")
+    int32 VictoryPoints = 0;
 
     UPROPERTY(BlueprintReadWrite, Category = "Player")
     TMap<EResourceType, int32> Resources;
 
-    FPlayerData() {}
+    UPROPERTY(BlueprintReadWrite, Category = "General")
+    TMap<EBuildable, FResourceCosts> ResourceCosts;
+
+    FPlayerData()
+    {
+        // Initialize all resource types to 0
+        Resources.Add(EResourceType::Wood, 0);
+        Resources.Add(EResourceType::Brick, 0);
+        Resources.Add(EResourceType::Sheep, 0);
+        Resources.Add(EResourceType::Wheat, 0);
+        Resources.Add(EResourceType::Ore, 0);
+
+        // Initialize build costs
+        FResourceCosts SettlementCost;
+        SettlementCost.Costs.Add(EResourceType::Wood, 1);
+        SettlementCost.Costs.Add(EResourceType::Brick, 1);
+        SettlementCost.Costs.Add(EResourceType::Sheep, 1);
+        SettlementCost.Costs.Add(EResourceType::Wheat, 1);
+        ResourceCosts.Add(EBuildable::Settlement, SettlementCost);
+
+        FResourceCosts CityCost;
+        CityCost.Costs.Add(EResourceType::Wheat, 2);
+        CityCost.Costs.Add(EResourceType::Ore, 3);
+        ResourceCosts.Add(EBuildable::City, CityCost);
+
+        FResourceCosts RoadCost;
+        RoadCost.Costs.Add(EResourceType::Wood, 1);
+        RoadCost.Costs.Add(EResourceType::Brick, 1);
+        ResourceCosts.Add(EBuildable::Road, RoadCost);
+
+        FResourceCosts DevelopmentCost;
+        DevelopmentCost.Costs.Add(EResourceType::Sheep, 1);
+        DevelopmentCost.Costs.Add(EResourceType::Wheat, 1);
+        DevelopmentCost.Costs.Add(EResourceType::Ore, 1);
+        ResourceCosts.Add(EBuildable::Development, DevelopmentCost);
+    }
 
     FPlayerData(EPlayerColor InColor)
         : PlayerColor(InColor)
@@ -78,6 +134,30 @@ struct FPlayerData
         Resources.Add(EResourceType::Sheep, 0);
         Resources.Add(EResourceType::Wheat, 0);
         Resources.Add(EResourceType::Ore, 0);
+
+        // Initialize build costs
+        FResourceCosts SettlementCost;
+        SettlementCost.Costs.Add(EResourceType::Wood, 1);
+        SettlementCost.Costs.Add(EResourceType::Brick, 1);
+        SettlementCost.Costs.Add(EResourceType::Sheep, 1);
+        SettlementCost.Costs.Add(EResourceType::Wheat, 1);
+        ResourceCosts.Add(EBuildable::Settlement, SettlementCost);
+
+        FResourceCosts CityCost;
+        CityCost.Costs.Add(EResourceType::Wheat, 2);
+        CityCost.Costs.Add(EResourceType::Ore, 3);
+        ResourceCosts.Add(EBuildable::City, CityCost);
+
+        FResourceCosts RoadCost;
+        RoadCost.Costs.Add(EResourceType::Wood, 1);
+        RoadCost.Costs.Add(EResourceType::Brick, 1);
+        ResourceCosts.Add(EBuildable::Road, RoadCost);
+
+        FResourceCosts DevelopmentCost;
+        DevelopmentCost.Costs.Add(EResourceType::Sheep, 1);
+        DevelopmentCost.Costs.Add(EResourceType::Wheat, 1);
+        DevelopmentCost.Costs.Add(EResourceType::Ore, 1);
+        ResourceCosts.Add(EBuildable::Development, DevelopmentCost);
     }
 
     void AddResource(EResourceType ResourceType, int32 Amount)
@@ -106,6 +186,35 @@ struct FPlayerData
             }
         }
         return true;
+    }
+    
+    bool CanBuild(EBuildable BuildableType) const
+    {
+        if (ResourceCosts.Contains(BuildableType))
+        {
+            return CanAfford(ResourceCosts[BuildableType].Costs);
+        }
+        return false;
+    }
+    
+    void SpendResourceFor(EBuildable forBuild)
+    {
+        if (ResourceCosts.Contains(forBuild))
+        {
+            for (auto& ResourcePair : ResourceCosts[forBuild].Costs)
+            {
+                SpendResource(ResourcePair.Key, ResourcePair.Value);
+            }
+        }
+    }
+    
+    void AddVictoryPoint(int32 Amount)
+    {
+        VictoryPoints += Amount;
+    }
+    void DeduceVictoryPoint(int32 Amount)
+    {
+        VictoryPoints -= Amount;
     }
 
     int32 GetResourceAmount(EResourceType ResourceType) const

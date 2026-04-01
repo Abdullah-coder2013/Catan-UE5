@@ -58,8 +58,6 @@ void ACatanPlayerController::SetupInputComponent()
 void ACatanPlayerController::OnClick(const FInputActionValue& Value)
 {
     AGameModeCPP* GameMode = GetWorld()->GetAuthGameMode<AGameModeCPP>();
-    bool bCanPlaceSettlement;
-    bool bCanPlaceRoad;
     if (!GameMode)
     {
         return;
@@ -67,34 +65,10 @@ void ACatanPlayerController::OnClick(const FInputActionValue& Value)
     // Update current player reference
     ChangePlayer(GameMode->GetCurrentPlayer());
     
-    if (GameMode->CurrentPhase == EGamePhase::Setup)
-    {
-        if (GameMode->CurrentSetupStep == EPlacementNode::Settlement)
-        {
-            bCanPlaceSettlement = true;
-            bCanPlaceRoad = false;
-        }
-        else if (GameMode->CurrentSetupStep == EPlacementNode::Road)
-        {
-            bCanPlaceSettlement = false;
-            bCanPlaceRoad = true;
-        }
-        else
-        {
-            UE_LOG(LogTemp, Warning, TEXT("Invalid setup step!"));
-            return;
-        }
-    }
-    else if (GameMode->CurrentTurnStep == ETurnStep::DynamicEnvironment)
-    {
-        bCanPlaceSettlement = true; // In a full implementation, you'd check if the player is trying to place a road or settlement
-        bCanPlaceRoad = true;
-    }
-    else
-    {
-        UE_LOG(LogTemp, Warning, TEXT("You can only build during the Build phase!"));
-        return;
-    }
+    bool bCanPlaceSettlement = GameMode->bShouldPlaceSettlement;
+    bool bCanPlaceRoad = GameMode->bShouldPlaceRoad;
+    bool bCanPlaceCity = GameMode->bShouldPlaceCity;
+    
     FVector WorldLocation, WorldDirection;
 
     if (DeprojectMousePositionToWorld(WorldLocation, WorldDirection))
@@ -116,7 +90,7 @@ void ACatanPlayerController::OnClick(const FInputActionValue& Value)
                 {
                     if (GameMode->GetCurrentPlayer().CanBuild(EBuildable::Settlement) || GameMode->CurrentPhase == EGamePhase::Setup)
                     {
-                        if (Vertex->TryPlaceSettlement(PlayerColor, ESettlementType::Settlement))
+                        if (Vertex->TryPlaceSettlement(PlayerColor, ESettlementType::Settlement, GameMode->CurrentPhase))
                         {
                             GameMode->GetCurrentPlayer().SpendResourceFor(EBuildable::Settlement);
                             GameMode->GetCurrentPlayer().AddVictoryPoint(1);
@@ -133,6 +107,26 @@ void ACatanPlayerController::OnClick(const FInputActionValue& Value)
                     else
                     {
                         UE_LOG(LogTemp, Warning, TEXT("%d does not have enough resources to build a settlement!"), (int32)CurrentPlayerPlaying.PlayerColor);
+                    }
+                }
+                else if (bCanPlaceCity)
+                {
+                    if (GameMode->GetCurrentPlayer().CanBuild(EBuildable::City))
+                    {
+                        if (Vertex->TryPlaceCity(PlayerColor, GameMode->CurrentPhase))
+                        {
+                            GameMode->GetCurrentPlayer().SpendResourceFor(EBuildable::City);
+                            GameMode->GetCurrentPlayer().DeduceVictoryPoint(1); // Add 1 additional point for upgrading to a city
+                            GameMode->GetCurrentPlayer().AddVictoryPoint(2);
+                        }
+                        else
+                        {
+                            UE_LOG(LogTemp, Warning, TEXT("Cannot place city here!"));
+                        }
+                    }
+                    else
+                    {
+                        UE_LOG(LogTemp, Warning, TEXT("%d does not have enough resources to build a city!"), (int32)CurrentPlayerPlaying.PlayerColor);
                     }
                 }
             }

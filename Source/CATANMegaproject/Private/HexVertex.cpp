@@ -21,7 +21,7 @@ void AHexVertex::BeginPlay()
 	
 }
 
-bool AHexVertex::TryPlaceSettlement(EPlayerColor PlayerColor, ESettlementType Type)
+bool AHexVertex::TryPlaceSettlement(EPlayerColor PlayerColor, ESettlementType Type, EGamePhase CurrentPhase)
 {
 	if (isOccupied)
 	{
@@ -41,6 +41,18 @@ bool AHexVertex::TryPlaceSettlement(EPlayerColor PlayerColor, ESettlementType Ty
 			return false;
 		}
 	}
+	for (const AAHexEdge* AdjEdge : AdjacentEdges)
+	{
+		if (CurrentPhase == EGamePhase::Setup)
+		{
+			continue; // Ignore edge occupation during setup phase
+		}
+		if ((AdjEdge && !AdjEdge->isOccupied && AdjEdge->occupiedBy != PlayerColor) || !AdjEdge)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("Edge not occupied!"));
+			return false;
+		}
+	}
 
 	occupiedBy = PlayerColor;
 	settlementType = Type;
@@ -49,6 +61,32 @@ bool AHexVertex::TryPlaceSettlement(EPlayerColor PlayerColor, ESettlementType Ty
 	UE_LOG(LogTemp, Warning, TEXT("Placed %s for player %d"), *UEnum::GetValueAsString(settlementType), (int32)occupiedBy);
 	return true;
 }
+
+bool AHexVertex::TryPlaceCity(EPlayerColor PlayerColor, EGamePhase CurrentPhase)
+{
+	if (!isOccupied)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Vertex not occupied!"));
+		return false;
+	}
+	if (CurrentPhase == EGamePhase::Setup)
+	{
+		return false;
+	}
+	if (isOccupied && PlayerColor != occupiedBy)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Cannot upgrade to city - vertex occupied by another player!"));
+		return false;
+	}
+	
+	occupiedBy = PlayerColor;
+	settlementType = ESettlementType::City;
+	isOccupied = true;
+	
+	UE_LOG(LogTemp, Warning, TEXT("Upgraded to city for player %d"), (int32)occupiedBy);
+	return true;
+}
+
 
 void AHexVertex::InitializeVertex(TArray<AHexTile*> InAdjacentHexes)
 {

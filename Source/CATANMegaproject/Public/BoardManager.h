@@ -7,6 +7,7 @@
 #include "HexTile.h"
 #include "HexVertex.h"
 #include "AHexEdge.h"
+#include "Dock.h"
 #include "BoardManager.generated.h"
 
 
@@ -30,6 +31,9 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Hex Settings")
 	TSubclassOf<AAHexEdge> HexEdgeClass;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dock Settings")
+	TSubclassOf<ADock> DockClass;
+
 protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
@@ -41,11 +45,14 @@ protected:
 	TMap<FString, AAHexEdge*> SpawnedEdges;
 	UPROPERTY()
 	TArray<AAHexEdge*> SpawnedEdgesArray; // Store pointers to edges in an array for easy access
+	UPROPERTY()
+	TArray<ADock*> Docks;
 
 public:	
 	// Called every frame
 	void GenerateBoard();
 	FVector AxialToWorld(int32 Q, int32 R) const;
 	TArray<AHexTile*> GetHexTiles() const { return HexTiles; }
+	TArray<ADock*> GetDocks() const { return Docks; }
 
 };

@@ -9,6 +9,176 @@
 #include "DebugUserWidget.h"
 #include "Blueprint/UserWidget.h"
 
+void AGameModeCPP::ChangeRules(EBuildable ruleType, bool value)
+{
+    switch (ruleType)
+    {
+        case EBuildable::Settlement:
+            bShouldPlaceSettlement = value;
+            bShouldPlaceCity = false; 
+            bShouldPlaceRoad = false;
+            break;
+        case EBuildable::Road:
+            bShouldPlaceRoad = value;
+            bShouldPlaceSettlement = false;
+            bShouldPlaceCity = false;
+            break;
+        case EBuildable::City:
+            bShouldPlaceCity = value;
+            bShouldPlaceSettlement = false;
+            bShouldPlaceRoad = false;
+            break;
+        default: break;
+    }
+}
+
+void AGameModeCPP::ProcessTradeOffer(EPlayerColor from, EPlayerColor to, TMap<EResourceType, int32> offerGive,
+    TMap<EResourceType, int32> offerGet)
+{
+    DebugWidget->ShowOffer(from, to, offerGive, offerGet);
+}
+
+void AGameModeCPP::ProcessBankTrade(TMap<EResourceType, int32> offerGive, TMap<EResourceType, int32> offerGet, EPlayerColor from)
+{
+    FPlayerData* FromPlayer = nullptr;
+    for (FPlayerData& Player : Players)
+    {
+        if (Player.PlayerColor == from)
+        {
+            FromPlayer = &Player;
+            break;
+        }
+    }
+    if (!FromPlayer) return;
+
+    for (auto Element : offerGive)
+    {
+        FromPlayer->SpendResource(Element.Key, Element.Value);
+    }
+    for (auto Element : offerGet)
+    {
+        FromPlayer->AddResource(Element.Key, Element.Value);
+    }
+}
+
+void AGameModeCPP::TradeAccepted(EPlayerColor from, EPlayerColor to, TMap<EResourceType, int32> offerGive,
+                                 TMap<EResourceType, int32> offerGet)
+{
+    UE_LOG(LogTemp, Log, TEXT("TradeAccepted: from=%d, to=%d"), (int32)from, (int32)to);
+    
+    // Get REFERENCES to the actual player data (not copies!)
+    FPlayerData* FromPlayer = nullptr;
+    FPlayerData* ToPlayer = nullptr;
+
+    for (FPlayerData& Player : Players)
+    {
+        if (Player.PlayerColor == from)
+        {
+            FromPlayer = &Player;
+        }
+        else if (Player.PlayerColor == to)
+        {
+            ToPlayer = &Player;
+        }
+    }
+    
+    if (!FromPlayer || !ToPlayer)
+    {
+        UE_LOG(LogTemp, Error, TEXT("TradeAccepted: Could not find players! FromPlayer=%s, ToPlayer=%s"), 
+            FromPlayer ? TEXT("found") : TEXT("NULL"), 
+            ToPlayer ? TEXT("found") : TEXT("NULL"));
+        return;
+    }
+    
+    UE_LOG(LogTemp, Log, TEXT("TradeAccepted: Before trade - FromPlayer Wood: %d, ToPlayer Wood: %d"), 
+        FromPlayer->Resources.Contains(EResourceType::Wood) ? FromPlayer->Resources[EResourceType::Wood] : 0,
+        ToPlayer->Resources.Contains(EResourceType::Wood) ? ToPlayer->Resources[EResourceType::Wood] : 0);
+
+    // From player gives resources to To player
+    FromPlayer->SpendResource(EResourceType::Wood, offerGive.Contains(EResourceType::Wood) ? offerGive[EResourceType::Wood] : 0);
+    FromPlayer->SpendResource(EResourceType::Brick, offerGive.Contains(EResourceType::Brick) ? offerGive[EResourceType::Brick] : 0);
+    FromPlayer->SpendResource(EResourceType::Sheep, offerGive.Contains(EResourceType::Sheep) ? offerGive[EResourceType::Sheep] : 0);
+    FromPlayer->SpendResource(EResourceType::Wheat, offerGive.Contains(EResourceType::Wheat) ? offerGive[EResourceType::Wheat] : 0);
+    FromPlayer->SpendResource(EResourceType::Ore, offerGive.Contains(EResourceType::Ore) ? offerGive[EResourceType::Ore] : 0);
+    
+    ToPlayer->AddResource(EResourceType::Wood, offerGive.Contains(EResourceType::Wood) ? offerGive[EResourceType::Wood] : 0);
+    ToPlayer->AddResource(EResourceType::Brick, offerGive.Contains(EResourceType::Brick) ? offerGive[EResourceType::Brick] : 0);
+    ToPlayer->AddResource(EResourceType::Sheep, offerGive.Contains(EResourceType::Sheep) ? offerGive[EResourceType::Sheep] : 0);
+    ToPlayer->AddResource(EResourceType::Wheat, offerGive.Contains(EResourceType::Wheat) ? offerGive[EResourceType::Wheat] : 0);
+    ToPlayer->AddResource(EResourceType::Ore, offerGive.Contains(EResourceType::Ore) ? offerGive[EResourceType::Ore] : 0);
+    
+    // To player gives resources to From player
+    FromPlayer->AddResource(EResourceType::Wood, offerGet.Contains(EResourceType::Wood) ? offerGet[EResourceType::Wood] : 0);
+    FromPlayer->AddResource(EResourceType::Brick, offerGet.Contains(EResourceType::Brick) ? offerGet[EResourceType::Brick] : 0);
+    FromPlayer->AddResource(EResourceType::Sheep, offerGet.Contains(EResourceType::Sheep) ? offerGet[EResourceType::Sheep] : 0);
+    FromPlayer->AddResource(EResourceType::Wheat, offerGet.Contains(EResourceType::Wheat) ? offerGet[EResourceType::Wheat] : 0);
+    FromPlayer->AddResource(EResourceType::Ore, offerGet.Contains(EResourceType::Ore) ? offerGet[EResourceType::Ore] : 0);
+    
+    ToPlayer->SpendResource(EResourceType::Wood, offerGet.Contains(EResourceType::Wood) ? offerGet[EResourceType::Wood] : 0);
+    ToPlayer->SpendResource(EResourceType::Brick, offerGet.Contains(EResourceType::Brick) ? offerGet[EResourceType::Brick] : 0);
+    ToPlayer->SpendResource(EResourceType::Sheep, offerGet.Contains(EResourceType::Sheep) ? offerGet[EResourceType::Sheep] : 0);
+    ToPlayer->SpendResource(EResourceType::Wheat, offerGet.Contains(EResourceType::Wheat) ? offerGet[EResourceType::Wheat] : 0);
+    ToPlayer->SpendResource(EResourceType::Ore, offerGet.Contains(EResourceType::Ore) ? offerGet[EResourceType::Ore] : 0);
+    
+    UE_LOG(LogTemp, Log, TEXT("TradeAccepted: After trade - FromPlayer Wood: %d, ToPlayer Wood: %d"), 
+        FromPlayer->Resources.Contains(EResourceType::Wood) ? FromPlayer->Resources[EResourceType::Wood] : 0,
+        ToPlayer->Resources.Contains(EResourceType::Wood) ? ToPlayer->Resources[EResourceType::Wood] : 0);
+}
+
+FPlayerData AGameModeCPP::GetPlayerByColor(EPlayerColor Color)
+{
+    for (const FPlayerData& Player : Players)
+    {
+        if (Player.PlayerColor == Color)
+        {
+            return Player;
+        }
+    }
+    return FPlayerData(EPlayerColor::None); // Return a default player if not found
+}
+
+TMap<EResourceType, int32> AGameModeCPP::GetPlayerResources(EPlayerColor PlayerColor) const
+{
+    TMap<EResourceType, int32> EmptyResources;
+    EmptyResources.Add(EResourceType::Wood, 0);
+    EmptyResources.Add(EResourceType::Brick, 0);
+    EmptyResources.Add(EResourceType::Sheep, 0);
+    EmptyResources.Add(EResourceType::Wheat, 0);
+    EmptyResources.Add(EResourceType::Ore, 0);
+
+    for (const FPlayerData& Player : Players)
+    {
+        if (Player.PlayerColor == PlayerColor)
+        {
+            return Player.Resources;
+        }
+    }
+
+    return EmptyResources;
+}
+
+TArray<EBankTradeMethods> AGameModeCPP::GetAvailableBankTradeMethods(EPlayerColor PlayerColor) const
+{
+    TArray<EBankTradeMethods> Available;
+    Available.Add(EBankTradeMethods::Standard);
+
+    if (!BoardManager) return Available;
+
+    for (ADock* Dock : BoardManager->GetDocks())
+    {
+        if (Dock && Dock->IsOwnedByPlayer(PlayerColor))
+        {
+            EBankTradeMethods Method = Dock->GetBankTradeMethod();
+            if (!Available.Contains(Method))
+            {
+                Available.Add(Method);
+            }
+        }
+    }
+
+    return Available;
+}
+
 // Beginplay
 void AGameModeCPP::BeginPlay()
 {
@@ -52,6 +222,18 @@ void AGameModeCPP::Tick(float DeltaTime)
         DebugWidget->SetCurrentTurnStepUI(CurrentTurnStep, CurrentSetupStep, CurrentPhase);
         DebugWidget->SetCurrentPhaseUI(CurrentPhase);
         DebugWidget->SetResourceUI(GetCurrentPlayer().Resources);
+        DebugWidget->SetVictoryPointsUI(GetCurrentPlayer().VictoryPoints);
+        
+        if (CurrentTurnStep == ETurnStep::DynamicEnvironment)
+        {
+            DebugWidget->SetVisibleBM(true);
+            DebugWidget->TradeButtonUI->SetIsEnabled(true); // Disable trade button during dynamic environment step
+        }
+        else
+        {
+            DebugWidget->SetVisibleBM(false);
+            DebugWidget->TradeButtonUI->SetIsEnabled(false);
+        }
     }
 }
 
@@ -77,11 +259,14 @@ FPlayerData& AGameModeCPP::GetCurrentPlayer()
 
 void AGameModeCPP::AdvanceSetup(bool bFirstTimeCalled) {
     // Switch between Settlement and Road placement
+    
     if (CurrentSetupStep == EPlacementNode::Settlement) {
         CurrentSetupStep = EPlacementNode::Road;
+        ChangeRules(EBuildable::Road, true);
     }
     else if (CurrentSetupStep == EPlacementNode::Road) {
         CurrentSetupStep = EPlacementNode::Settlement;
+        ChangeRules(EBuildable::Settlement, true);
         if (bFirstTimeCalled)
         {
             return;

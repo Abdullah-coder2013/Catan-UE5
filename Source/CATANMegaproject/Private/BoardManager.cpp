@@ -192,6 +192,8 @@ void ABoardManager::GenerateBoard()
                         if (NewEdge)
                         {
                             NewEdge->InitializeEdge({ VertexA, VertexB });
+                            VertexA->AdjacentEdges.Add(NewEdge);
+                            VertexB->AdjacentEdges.Add(NewEdge);
                             SpawnedEdges.Add(EdgeKey, NewEdge);
                             SpawnedEdgesArray.Add(NewEdge);
                             
@@ -235,5 +237,65 @@ void ABoardManager::GenerateBoard()
             }
         }
     }
+
+    // --- Dock / Harbor placement ---
+    if (!DockClass) return;
+
+    TArray<AHexVertex*> OuterVertices;
+    for (auto& Pair : SpawnedVertices)
+    {
+        AHexVertex* Vertex = Pair.Value;
+        if (Vertex && Vertex->AdjacentHexes.Num() < 3)
+        {
+            OuterVertices.Add(Vertex);
+        }
+    }
+
+    if (OuterVertices.Num() == 0) return;
+
+    OuterVertices.Sort([](const AHexVertex& A, const AHexVertex& B)
+    {
+        float AngleA = FMath::Atan2(A.GetActorLocation().Y, A.GetActorLocation().X);
+        float AngleB = FMath::Atan2(B.GetActorLocation().Y, B.GetActorLocation().X);
+        return AngleA < AngleB;
+    });
+
+    static const TArray<EDockType> FixedDockTypes = {
+        EDockType::Generic,
+        EDockType::Ore,
+        EDockType::Generic,
+        EDockType::Wheat,
+        EDockType::Generic,
+        EDockType::Sheep,
+        EDockType::Generic,
+        EDockType::Wood,
+        EDockType::Brick
+    };
+
+    int32 NumDocks = FMath::Min(FixedDockTypes.Num(), OuterVertices.Num());
+    float Step = (float)OuterVertices.Num() / NumDocks;
+
+    for (int32 i = 0; i < NumDocks; i++)
+    {
+        int32 VertexIndex = FMath::RoundToInt(i * Step);
+        VertexIndex = FMath::Clamp(VertexIndex, 0, OuterVertices.Num() - 1);
+        AHexVertex* DockVertex = OuterVertices[VertexIndex];
+
+        FVector VertexLocation = DockVertex->GetActorLocation();
+        FVector Direction = VertexLocation.GetSafeNormal();
+        if (Direction.IsNearlyZero()) Direction = FVector(1.f, 0.f, 0.f);
+        FVector DockLocation = VertexLocation + Direction * (HexSize * 0.6f);
+        DockLocation.Z = VertexLocation.Z;
+
+        ADock* NewDock = GetWorld()->SpawnActor<ADock>(DockClass, DockLocation, FRotator::ZeroRotator);
+        if (NewDock)
+        {
+            NewDock->DockType = FixedDockTypes[i];
+            NewDock->AssociatedVertex = DockVertex;
+            Docks.Add(NewDock);
+        }
+    }
+
+    UE_LOG(LogTemp, Log, TEXT("Spawned %d docks"), Docks.Num());
 }
 

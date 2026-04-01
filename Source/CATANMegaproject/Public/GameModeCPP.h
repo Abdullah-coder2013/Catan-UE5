@@ -7,6 +7,7 @@
 #include "BoardManager.h"
 #include "CatanSharedValues.h"
 #include "DebugUserWidget.h"
+#include "Dock.h"
 #include "GameModeCPP.generated.h"
 
 
@@ -59,6 +60,28 @@ class CATANMEGAPROJECT_API AGameModeCPP : public AGameModeBase
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Players")
 	TArray<EPlayerColor> DefaultColors;
+	
+	UPROPERTY()
+	bool bShouldPlaceSettlement;
+	UPROPERTY()
+	bool bShouldPlaceRoad;
+	UPROPERTY()
+	bool bShouldPlaceCity;
+	
+	void ChangeRules(EBuildable ruleType, bool value);
+
+	void ProcessTradeOffer(EPlayerColor from, EPlayerColor to, TMap<EResourceType, int32> offerGive, TMap<EResourceType, int32> offerGet);
+	
+	void ProcessBankTrade(TMap<EResourceType, int32> offerGive, TMap<EResourceType, int32> offerGet, EPlayerColor from);
+
+	void TradeAccepted(EPlayerColor from, EPlayerColor to, TMap<EResourceType, int32> offerGive, TMap<EResourceType, int32> offerGet);
+	
+	FPlayerData GetPlayerByColor(EPlayerColor Color);
+
+	// Get player resources by color
+	TMap<EResourceType, int32> GetPlayerResources(EPlayerColor PlayerColor) const;
+
+	TArray<EBankTradeMethods> GetAvailableBankTradeMethods(EPlayerColor PlayerColor) const;
 
 	protected:
 	virtual void BeginPlay() override;

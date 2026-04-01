@@ -13,6 +13,31 @@ enum class EPlayerColor : uint8
 };
 
 UENUM(BlueprintType)
+enum class EDockType : uint8
+{
+    Generic,
+    Wood,
+    Brick,
+    Sheep,
+    Wheat,
+    Ore
+};
+
+UENUM(BlueprintType)
+enum class EBankTradeMethods : uint8
+{
+    None,
+    Standard, // 4:1
+    Dock, // 3:1
+    Wood, // 2:1
+    Brick, // 2:1
+    Sheep, // 2:1
+    Wheat, // 2:1
+    Ore // 2:1
+    
+};
+
+UENUM(BlueprintType)
 enum class ESettlementType : uint8
 {
     Empty,

@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "AHexEdge.h"
 #include "GameFramework/Actor.h"
 #include "CatanSharedValues.h"
 #include "HexVertex.generated.h"
@@ -26,13 +27,17 @@ public:
 	TArray<AHexTile*> AdjacentHexes; // Store indices of adjacent hexes for easy access
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Vertex Relations")
 	TArray<AHexVertex*> AdjacentVertices; // Store pointers to adjacent vertices for easy access
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Vertex Relations")
+	TArray<AAHexEdge*> AdjacentEdges;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Vertex Components")
 	UStaticMeshComponent* VertexMesh;
 
 	void InitializeVertex(TArray<AHexTile*> AdjacentHexes);
 
-	bool TryPlaceSettlement(EPlayerColor PlayerColor, ESettlementType Type);
+	bool TryPlaceSettlement(EPlayerColor PlayerColor, ESettlementType Type, EGamePhase CurrentPhase);
+	
+	bool TryPlaceCity(EPlayerColor PlayerColor, EGamePhase CurrentPhase);
 
 	AHexVertex();
 

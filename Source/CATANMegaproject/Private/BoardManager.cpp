@@ -299,3 +299,27 @@ void ABoardManager::GenerateBoard()
     UE_LOG(LogTemp, Log, TEXT("Spawned %d docks"), Docks.Num());
 }
 
+AHexTile* ABoardManager::GetHexTile(EHexType HexType)
+{
+    for (auto Element : HexTiles)
+    {
+        if (Element && Element->HexType == HexType)
+        {
+            return Element;
+        }
+    }
+    return nullptr;
+}
+
+AHexTile* ABoardManager::GetRobberTile()
+{
+    for (auto Element : HexTiles)
+    {
+        if (Element && Element->bHasRobber)
+        {
+            return Element;
+        }
+    }
+    return nullptr;
+}
+

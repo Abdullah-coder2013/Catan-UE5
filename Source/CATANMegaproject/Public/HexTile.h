@@ -37,6 +37,8 @@ public:
 	int32 Q; // Axial coordinate
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Hex Properties")
 	int32 R; // Axial coordinate
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Hex Properties")
+	bool bHasRobber;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Hex Components")
 	UStaticMeshComponent* HexMesh;
@@ -48,6 +50,8 @@ public:
 	TArray<AHexVertex*> Vertices;
 
 	void InitializeHex(EHexType Type, int32 Token, int32 InQ, int32 InR, bool bInitialized);
+	
+	void PlaceRobber(AActor* RobberActor);
 
 	int32 GetNumberToken() const { return NumberToken; }
 	EResourceType HexTypeToResource() const;

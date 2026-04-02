@@ -29,6 +29,15 @@ void AHexTile::InitializeHex(EHexType Type, int32 Token, int32 InQ, int32 InR, b
 	isInitialized = bInitialized;
 }
 
+void AHexTile::PlaceRobber(AActor* RobberActor)
+{
+	if (RobberActor)
+	{
+		RobberActor->SetActorLocation(GetActorLocation() + FVector(0.f, 0.f, 50.f)); // Adjust Z as needed
+		bHasRobber = true;
+	}
+}
+
 EResourceType AHexTile::HexTypeToResource() const
 {
 	switch (static_cast<uint8>(HexType))

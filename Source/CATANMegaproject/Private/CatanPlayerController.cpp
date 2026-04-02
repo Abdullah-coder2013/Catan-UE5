@@ -83,6 +83,21 @@ void ACatanPlayerController::OnClick(const FInputActionValue& Value)
         if (GetWorld()->LineTraceSingleByChannel(HitResult, TraceStart, TraceEnd, ECC_Visibility, QueryParams))
         {
             AActor* HitActor = HitResult.GetActor();
+            
+            if (GameMode->bShouldPlaceRobber)
+            {
+                if (AHexTile* Tile = Cast<AHexTile>(HitActor))
+                {
+                    if (Tile->HexType != EHexType::Desert)
+                    {
+                        GameMode->MoveRobber(Tile);
+                    }
+                    else
+                    {
+                        UE_LOG(LogTemp, Warning, TEXT("Cannot place robber on desert tile!"));
+                    }
+                }
+            }
 
             if (AHexVertex* Vertex = Cast<AHexVertex>(HitActor))
             {

@@ -28,6 +28,11 @@ void AGameModeCPP::ChangeRules(EBuildable ruleType, bool value)
             bShouldPlaceSettlement = false;
             bShouldPlaceRoad = false;
             break;
+        case EBuildable::None:
+             bShouldPlaceSettlement = false;
+             bShouldPlaceCity = false;
+             bShouldPlaceRoad = false;
+             break;
         default: break;
     }
 }
@@ -125,16 +130,123 @@ void AGameModeCPP::TradeAccepted(EPlayerColor from, EPlayerColor to, TMap<EResou
         ToPlayer->Resources.Contains(EResourceType::Wood) ? ToPlayer->Resources[EResourceType::Wood] : 0);
 }
 
-FPlayerData AGameModeCPP::GetPlayerByColor(EPlayerColor Color)
+void AGameModeCPP::MoveRobber(AHexTile* Tile)
 {
-    for (const FPlayerData& Player : Players)
+    Tile->PlaceRobber(Robber);
+    bShouldPlaceRobber = false;
+    DebugWidget->SetRobberText(false);
+    StartDiscardPhase();
+}
+
+void AGameModeCPP::StartDiscardPhase()
+{
+    PlayersNeedingDiscard.Empty();
+    DiscardQueueIndex = 0;
+
+    for (EPlayerColor PlayerColor : PlayerOrder)
+    {
+        if (GetTotalCardsInHand(PlayerColor) > 7)
+        {
+            PlayersNeedingDiscard.Add(PlayerColor);
+        }
+    }
+
+    CurrentTurnStep = ETurnStep::RobberDiscard;
+
+    if (PlayersNeedingDiscard.Num() == 0)
+    {
+        StartRobPhase();
+        return;
+    }
+
+    CurrentDiscardPlayer = PlayersNeedingDiscard[0];
+    DebugWidget->ShowDiscardModal(CurrentDiscardPlayer);
+}
+
+void AGameModeCPP::AdvanceDiscardPhase()
+{
+    DiscardQueueIndex++;
+
+    if (DiscardQueueIndex < PlayersNeedingDiscard.Num())
+    {
+        CurrentDiscardPlayer = PlayersNeedingDiscard[DiscardQueueIndex];
+        DebugWidget->ShowDiscardModal(CurrentDiscardPlayer);
+    }
+    else
+    {
+        StartRobPhase();
+    }
+}
+
+void AGameModeCPP::StartRobPhase()
+{
+    CurrentTurnStep = ETurnStep::RobberSteal;
+    DebugWidget->SetVisibleRobModal(BoardManager->GetRobberTile());
+}
+
+void AGameModeCPP::FinishRobPhase()
+{
+    CurrentTurnStep = ETurnStep::DynamicEnvironment;
+}
+
+void AGameModeCPP::RobFromPlayer(EPlayerColor FromPlayerColor, EPlayerColor ToPlayerColor)
+{
+    // Choose a random resource from FromPlayerColor
+    TMap<EResourceType, int32> FromPlayerResources = GetPlayerResources(FromPlayerColor);
+    TArray<EResourceType> AvailableResources;
+    EResourceType* SelectedResource;
+    for (auto& ResourcePair : FromPlayerResources)
+    {        if (ResourcePair.Value > 0)
+    {            AvailableResources.Add(ResourcePair.Key);
+    }    }
+    if (AvailableResources.Num() == 0)    {
+        UE_LOG(LogTemp, Log, TEXT("RobFromPlayer: Player %d has no resources to steal!"), (int32)FromPlayerColor);
+        return;
+    }
+    SelectedResource = &AvailableResources[FMath::RandRange(0, AvailableResources.Num() - 1)];
+    GetPlayerByColor(FromPlayerColor).SpendResource(*SelectedResource, 1);
+    GetPlayerByColor(ToPlayerColor).AddResource(*SelectedResource, 1);
+     UE_LOG(LogTemp, Log, TEXT("RobFromPlayer: Player %d robbed Player %d for 1 %s"), (int32)ToPlayerColor, (int32)FromPlayerColor, *UEnum::GetValueAsString(*SelectedResource));
+}
+
+int32 AGameModeCPP::GetTotalCardsInHand(EPlayerColor PlayerColor)
+{
+    TMap<EResourceType, int32> PlayerResources = GetPlayerResources(PlayerColor);
+    int32 Amount = 0;
+    for (auto& ResourcePair : PlayerResources)
+    {
+        Amount += ResourcePair.Value;
+    }
+    return Amount;
+}
+
+void AGameModeCPP::DiscardResources(EPlayerColor PlayerColor, TMap<EResourceType, int32> Resources)
+{
+    TMap<EResourceType, int32> PlayerResources = GetPlayerResources(PlayerColor);
+    for (auto& ResourcePair : Resources)
+    {
+        if (PlayerResources.Contains(ResourcePair.Key))
+        {
+            int32 DiscardAmount = FMath::Min(ResourcePair.Value, PlayerResources[ResourcePair.Key]);
+            GetPlayerByColor(PlayerColor).SpendResource(ResourcePair.Key, DiscardAmount);
+            UE_LOG(LogTemp, Log, TEXT("DiscardResources: Player %d discards %d %s"), (int32)PlayerColor, DiscardAmount, *UEnum::GetValueAsString(ResourcePair.Key));
+        }
+    }
+}
+
+FPlayerData& AGameModeCPP::GetPlayerByColor(EPlayerColor Color)
+{
+    for (FPlayerData& Player : Players)
     {
         if (Player.PlayerColor == Color)
         {
             return Player;
         }
     }
-    return FPlayerData(EPlayerColor::None); // Return a default player if not found
+    static FPlayerData DefaultPlayer(EPlayerColor::None);
+    DefaultPlayer = FPlayerData(EPlayerColor::None);
+    UE_LOG(LogTemp, Error, TEXT("GetPlayerByColor: Player not found for color %d"), (int32)Color);
+    return DefaultPlayer;
 }
 
 TMap<EResourceType, int32> AGameModeCPP::GetPlayerResources(EPlayerColor PlayerColor) const
@@ -199,6 +311,10 @@ void AGameModeCPP::BeginPlay()
     {
         BoardManager = GetWorld()->SpawnActor<ABoardManager>(BoardManagerClass, FVector::ZeroVector, FRotator::ZeroRotator);
     }
+    if (RobberClass)
+    {
+        Robber = GetWorld()->SpawnActor<ARobber>(RobberClass, FVector::ZeroVector, FRotator::ZeroRotator);
+    }
     // Initialize HexTiles from BoardManager
     if (BoardManager)
     {
@@ -208,6 +324,10 @@ void AGameModeCPP::BeginPlay()
     if (DefaultColors.Num() == 0)
     {
         DefaultColors = { EPlayerColor::Red, EPlayerColor::Blue, EPlayerColor::White, EPlayerColor::Orange };
+    }
+    if (DebugWidget)
+    {
+        DebugWidget->SetRobberText(false);
     }
     StartGame();
 }
@@ -235,6 +355,7 @@ void AGameModeCPP::Tick(float DeltaTime)
             DebugWidget->TradeButtonUI->SetIsEnabled(false);
         }
     }
+    
 }
 
 AGameModeCPP::AGameModeCPP()
@@ -324,7 +445,14 @@ void AGameModeCPP::AdvanceStep() {
     UE_LOG(LogTemp, Warning, TEXT("AdvanceStep called. CurrentTurnStep: %d"), (int32)CurrentTurnStep);
     if (CurrentTurnStep == ETurnStep::RollDice) {
         RollDice();
-        CurrentTurnStep = ETurnStep::DynamicEnvironment;
+        if (bShouldPlaceRobber)
+        {
+            // Wait for player to click a hex to place the robber
+        }
+        else
+        {
+            CurrentTurnStep = ETurnStep::DynamicEnvironment;
+        }
     }
     else if (CurrentTurnStep == ETurnStep::DynamicEnvironment) {
         CurrentTurnStep = ETurnStep::RollDice;
@@ -344,6 +472,14 @@ void AGameModeCPP::StartGame() {
     PlayerOrder = DefaultColors;
     bSetupReversed = false;
     CurrentSetupStep = EPlacementNode::Road;
+    if (BoardManager)
+    {
+        AHexTile* DesertTile = BoardManager->GetHexTile(EHexType::Desert);
+        if (DesertTile && Robber)
+        {
+            Robber->SetActorLocation(DesertTile->GetActorLocation());
+        }
+    }
     InitializePlayers(DefaultColors);
     AdvanceSetup(true);
 }
@@ -364,6 +500,11 @@ void AGameModeCPP::DistributeResources(int32 DiceRoll)
     for (AHexTile* Tile : RelevantTiles)
     {
         UE_LOG(LogTemp, Warning, TEXT("Processing tile: %s, Token: %d"), *Tile->GetName(), Tile->GetNumberToken());
+        if (Tile->bHasRobber)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("Skipping tile %s because it has the robber"), *Tile->GetName());
+            continue; // Skip resource distribution for tiles with the robber
+        }
         // loop through vertices
         for (AHexVertex* Vertex : Tile->Vertices)
         {
@@ -419,6 +560,13 @@ void AGameModeCPP::RollDice()
     int32 Dice1 = FMath::RandRange(1, 6);
     int32 Dice2 = FMath::RandRange(1, 6);
     int32 Total = Dice1 + Dice2;
+    if (Total == 7)
+    {
+        // Robber
+        ChangeRules(EBuildable::None, false); // Disable all building during robber step
+        bShouldPlaceRobber = true;
+        DebugWidget->SetRobberText(true);
+    }
     UE_LOG(LogTemp, Log, TEXT("Rolled: %d + %d = %d"), Dice1, Dice2, Total);
     DistributeResources(Total);
 

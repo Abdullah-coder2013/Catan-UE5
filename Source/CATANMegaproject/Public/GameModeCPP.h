@@ -8,6 +8,7 @@
 #include "CatanSharedValues.h"
 #include "DebugUserWidget.h"
 #include "Dock.h"
+#include "Robber.h"
 #include "GameModeCPP.generated.h"
 
 
@@ -28,6 +29,9 @@ class CATANMEGAPROJECT_API AGameModeCPP : public AGameModeBase
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GameMode Settings")
 	TSubclassOf<ABoardManager> BoardManagerClass;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GameMode Settings")
+	TSubclassOf<ARobber> RobberClass;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Players")
 	TArray<FPlayerData> Players;
@@ -67,6 +71,8 @@ class CATANMEGAPROJECT_API AGameModeCPP : public AGameModeBase
 	bool bShouldPlaceRoad;
 	UPROPERTY()
 	bool bShouldPlaceCity;
+	UPROPERTY()
+	bool bShouldPlaceRobber;
 	
 	void ChangeRules(EBuildable ruleType, bool value);
 
@@ -76,12 +82,33 @@ class CATANMEGAPROJECT_API AGameModeCPP : public AGameModeBase
 
 	void TradeAccepted(EPlayerColor from, EPlayerColor to, TMap<EResourceType, int32> offerGive, TMap<EResourceType, int32> offerGet);
 	
-	FPlayerData GetPlayerByColor(EPlayerColor Color);
+	void MoveRobber(AHexTile* Tile);
+	
+	void RobFromPlayer(EPlayerColor FromPlayerColor, EPlayerColor ToPlayerColor);
+	
+	int32 GetTotalCardsInHand(EPlayerColor PlayerColor);
+	
+	void DiscardResources(EPlayerColor PlayerColor, TMap<EResourceType, int32> Resources);
+	
+	FPlayerData& GetPlayerByColor(EPlayerColor Color);
 
-	// Get player resources by color
 	TMap<EResourceType, int32> GetPlayerResources(EPlayerColor PlayerColor) const;
 
 	TArray<EBankTradeMethods> GetAvailableBankTradeMethods(EPlayerColor PlayerColor) const;
+
+	void StartDiscardPhase();
+	void AdvanceDiscardPhase();
+	void StartRobPhase();
+	void FinishRobPhase();
+
+	UPROPERTY()
+	EPlayerColor CurrentDiscardPlayer;
+
+	UPROPERTY()
+	TArray<EPlayerColor> PlayersNeedingDiscard;
+
+	UPROPERTY()
+	int32 DiscardQueueIndex = 0;
 
 	protected:
 	virtual void BeginPlay() override;
@@ -94,5 +121,7 @@ class CATANMEGAPROJECT_API AGameModeCPP : public AGameModeBase
 	TArray<AHexTile*> HexTiles;
 	UPROPERTY()
 	ABoardManager* BoardManager;
+	UPROPERTY()
+	ARobber* Robber;
 
 };

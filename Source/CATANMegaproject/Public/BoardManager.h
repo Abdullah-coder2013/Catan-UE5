@@ -51,6 +51,8 @@ protected:
 public:	
 	// Called every frame
 	void GenerateBoard();
+	AHexTile* GetHexTile(EHexType HexType);
+	AHexTile* GetRobberTile();
 	FVector AxialToWorld(int32 Q, int32 R) const;
 	TArray<AHexTile*> GetHexTiles() const { return HexTiles; }
 	TArray<ADock*> GetDocks() const { return Docks; }

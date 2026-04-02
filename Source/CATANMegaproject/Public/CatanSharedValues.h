@@ -96,7 +96,9 @@ enum class ETurnStep : uint8
     None,
     RollDice,
     DynamicEnvironment,
-    EndTurn
+    EndTurn,
+    RobberDiscard,
+    RobberSteal
 };
 
 USTRUCT(BlueprintType)

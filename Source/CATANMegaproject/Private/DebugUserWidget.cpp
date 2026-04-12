@@ -36,12 +36,17 @@ void UDebugUserWidget::NativeOnInitialized()
     TradeOptionsModalUI->SetVisibility(ESlateVisibility::Hidden);
     RobModalUI->SetVisibility(ESlateVisibility::Hidden);
     RobberDiscardModalUI->SetVisibility(ESlateVisibility::Hidden);
+    GameOverUI->SetVisibility(ESlateVisibility::Hidden);
+    SetDevCardUIDisabled();
+    HideYOPModal();
+    HideMonopolyModal();
 
     // --- Build Modal button bindings ---
     SettlementBTN->OnClicked.AddDynamic(this, &UDebugUserWidget::OnClickedSettlement);
     RoadBTN->OnClicked.AddDynamic(this, &UDebugUserWidget::OnClickedRoad);
     CityBTN->OnClicked.AddDynamic(this, &UDebugUserWidget::OnClickedCity);
     BuildButtonUI->OnClicked.AddDynamic(this, &UDebugUserWidget::OnClickedBuildModal);
+    DevelopmentUpgradeBTN->OnClicked.AddDynamic(this, &UDebugUserWidget::OnClickedDevelopmentUpgrade);
     CloseBTN->OnClicked.AddDynamic(this, &UDebugUserWidget::OnClickedCloseButtonBM);
 
     // --- Trade Options Modal button bindings ---
@@ -61,9 +66,24 @@ void UDebugUserWidget::NativeOnInitialized()
     // --- Bank Trade Modal button bindings ---
     TradeBankUI->OnClicked.AddDynamic(this, &UDebugUserWidget::OnClickedBankTrade);
     CloseBTN_4->OnClicked.AddDynamic(this, &UDebugUserWidget::OnClickedCloseBankTradeOptions);
+    FinalizeBTN_1->OnClicked.AddDynamic(this, &UDebugUserWidget::FinalizeBankTrade);
 
     // --- Discard Modal button bindings ---
     DiscardBTN->OnClicked.AddDynamic(this, &UDebugUserWidget::Discard);
+    
+    // --- Development Card Bindings ---
+    DevCardButtonUI->OnClicked.AddDynamic(this, &UDebugUserWidget::SetDevCardUIEnabled);
+    CloseBTN_7->OnClicked.AddDynamic(this, &UDebugUserWidget::SetDevCardUIDisabled);
+    
+    KnightBTN->OnClicked.AddDynamic(this, &UDebugUserWidget::OnClickedKnight);
+    RoadBuildingBTN->OnClicked.AddDynamic(this, &UDebugUserWidget::OnClickedRoadBuilding);
+    YOPBTN->OnClicked.AddDynamic(this, &UDebugUserWidget::OnClickedYOP);
+    MonopolyBTN->OnClicked.AddDynamic(this, &UDebugUserWidget::OnClickedMonopoly);
+    
+    CloseBTN_8->OnClicked.AddDynamic(this, &UDebugUserWidget::UDebugUserWidget::HideMonopolyModal);
+    
+    CloseBTN_9->OnClicked.AddDynamic(this, &UDebugUserWidget::UDebugUserWidget::HideYOPModal);
+    YOPFinaliseButton->OnClicked.AddDynamic(this, &UDebugUserWidget::UDebugUserWidget::FinaliseYOP);
 
     // --- Trade resource maps ---
     YouGiveResources.Add(EResourceType::Wood, 0);
@@ -161,6 +181,11 @@ void UDebugUserWidget::SetRobberText(bool bEnable)
 {
     RobberText->SetVisibility(bEnable ? ESlateVisibility::Visible : ESlateVisibility::Hidden);
 }
+void UDebugUserWidget::SetRoadBuildingText(bool bEnable, int32 roadsBuilt)
+{
+    RoadBuildingText->SetVisibility(bEnable ? ESlateVisibility::Visible : ESlateVisibility::Hidden);
+    RoadBuildingText->SetText(FText::FromString(FString::Printf(TEXT("Build Roads %d/%d"), roadsBuilt, 2)));
+}
 
 // ============================================================
 // 2. Build Modal
@@ -193,6 +218,16 @@ void UDebugUserWidget::SetEnabledINDIVIDUALBM(bool Enable, EBuildable Buildable)
         default:
             break;
     }
+}
+
+void UDebugUserWidget::OnClickedDevelopmentUpgrade()
+{
+    AGameModeCPP* GameMode = GetWorld()->GetAuthGameMode<AGameModeCPP>();
+    if (GameMode)
+    {
+        GameMode->GiveDevCard(GameMode->GetCurrentPlayer().PlayerColor);
+    }
+    OnClickedCloseButtonBM();
 }
 
 void UDebugUserWidget::OnClickedBuildModal()
@@ -898,9 +933,10 @@ void UDebugUserWidget::OnClickedCloseBankTradeOptions()
 
 void UDebugUserWidget::FinalizeBankTrade()
 {
-    UE_LOG(LogTemp, Log, TEXT("FinalizeBankTrade: Not yet implemented"));
+    UE_LOG(LogTemp, Log, TEXT("FinalizeBankTrade: FinalizedTrade"));
     AGameModeCPP* GameMode = GetWorld()->GetAuthGameMode<AGameModeCPP>();
     GameMode->ProcessBankTrade(BankTradeYouGive, BankTradeYouGet, GameMode->GetCurrentPlayer().PlayerColor);
+    OnClickedCloseBankTradeOptions();
 }
 
 // ============================================================
@@ -1136,5 +1172,315 @@ void UDebugUserWidget::FinishRobPhase()
     if (GameMode)
     {
         GameMode->FinishRobPhase();
+    }
+}
+
+// ==================================================================
+// 9.0 Development Cards: General
+// ==================================================================
+
+void UDebugUserWidget::SetDevCardUIEnabled()
+{
+    if (DevelopmentCardsUI)
+    {
+        DevelopmentCardsUI->SetIsEnabled(true);
+        DevelopmentCardsUI->SetVisibility(ESlateVisibility::Visible);
+    }
+    else
+    {
+        UE_LOG(LogTemp, Error, TEXT("SetDevCardUIEnabled: DevCardModalUI is NULL! Check UMG binding!"));
+    }
+}
+
+void UDebugUserWidget::SetDevCardUIDisabled()
+{
+    if (DevelopmentCardsUI)
+    {
+        DevelopmentCardsUI->SetIsEnabled(false);
+        DevelopmentCardsUI->SetVisibility(ESlateVisibility::Hidden);
+    }
+    else
+    {
+        UE_LOG(LogTemp, Error, TEXT("SetDevCardUIDisabled: DevCardModalUI is NULL! Check UMG binding!"));
+    }
+}
+
+void UDebugUserWidget::UpdateDevCards()
+{
+    AGameModeCPP* GameMode = GetWorld()->GetAuthGameMode<AGameModeCPP>();
+    FPlayerData* CurrentPlayer = &GameMode->GetCurrentPlayer();
+    
+    KnightAmount->SetText(FText::FromString(FString::Printf(TEXT("x%d"), CurrentPlayer->GetDevelopmentCardAmount(EDevelopmentCardType::Knight))));
+    RoadBuildingAmount->SetText(FText::FromString(FString::Printf(TEXT("x%d"), CurrentPlayer->GetDevelopmentCardAmount(EDevelopmentCardType::RoadBuilding))));
+    YOPAmount->SetText(FText::FromString(FString::Printf(TEXT("x%d"), CurrentPlayer->GetDevelopmentCardAmount(EDevelopmentCardType::YearsOfPlenty))));
+    MonopolyAmount->SetText(FText::FromString(FString::Printf(TEXT("x%d"), CurrentPlayer->GetDevelopmentCardAmount(EDevelopmentCardType::Monopoly))));
+    VictoryPointAmount->SetText(FText::FromString(FString::Printf(TEXT("x%d"), CurrentPlayer->GetDevelopmentCardAmount(EDevelopmentCardType::VictoryPoint))));
+}
+
+void UDebugUserWidget::OnClickedKnight()
+{
+    AGameModeCPP* GameMode = GetWorld()->GetAuthGameMode<AGameModeCPP>();
+    FPlayerData* CurrentPlayer = &GameMode->GetCurrentPlayer();
+    if (KnightAmount && KnightAmount->GetText().ToString() != "x0")
+    {
+        GameMode->PlayDevelopmentCard(CurrentPlayer->GetFirstDevelopmentCardOfType(EDevelopmentCardType::Knight));
+        SetDevCardUIDisabled();
+    }
+    UE_LOG(LogTemp, Log, TEXT("OnClickedRoadBuilding: Attempted to play Knight card"));
+}
+
+void UDebugUserWidget::OnClickedMonopoly()
+{
+    AGameModeCPP* GameMode = GetWorld()->GetAuthGameMode<AGameModeCPP>();
+    FPlayerData* CurrentPlayer = &GameMode->GetCurrentPlayer();
+    if (MonopolyAmount && MonopolyAmount->GetText().ToString() != "x0")
+    {
+        GameMode->PlayDevelopmentCard(CurrentPlayer->GetFirstDevelopmentCardOfType(EDevelopmentCardType::Monopoly));
+        SetDevCardUIDisabled();
+    }
+    UE_LOG(LogTemp, Log, TEXT("OnClickedRoadBuilding: Attempted to play Monopoly card"));
+}
+
+void UDebugUserWidget::OnClickedRoadBuilding()
+{
+    AGameModeCPP* GameMode = GetWorld()->GetAuthGameMode<AGameModeCPP>();
+    FPlayerData* CurrentPlayer = &GameMode->GetCurrentPlayer();
+    if (RoadBuildingAmount && RoadBuildingAmount->GetText().ToString() != "x0")
+    {
+        GameMode->PlayDevelopmentCard(CurrentPlayer->GetFirstDevelopmentCardOfType(EDevelopmentCardType::RoadBuilding));
+        SetDevCardUIDisabled();
+    }
+    UE_LOG(LogTemp, Log, TEXT("OnClickedRoadBuilding: Attempted to play Road Building card"));
+}
+
+void UDebugUserWidget::OnClickedYOP()
+{
+    AGameModeCPP* GameMode = GetWorld()->GetAuthGameMode<AGameModeCPP>();
+    FPlayerData* CurrentPlayer = &GameMode->GetCurrentPlayer();
+    if (YOPAmount && YOPAmount->GetText().ToString() != "x0")
+    {
+        GameMode->PlayDevelopmentCard(CurrentPlayer->GetFirstDevelopmentCardOfType(EDevelopmentCardType::YearsOfPlenty));
+        SetDevCardUIDisabled();
+    }
+    UE_LOG(LogTemp, Log, TEXT("OnClickedRoadBuilding: Attempted to play YOP card"));
+}
+
+// ==================================================================
+// 9.1 Development Cards: YOP and Monopoly Modal UI
+// ==================================================================
+
+void UDebugUserWidget::InitializeYOPComboboxes()
+{
+    // Clear old handlers to prevent duplicates
+    YOPComboBoxHandlers.Empty();
+
+    int32 TotalAmount = 0;
+    for (auto Element : ResourcesSelected)
+    {
+        TotalAmount += Element.Value;
+    }
+
+    auto SetupYOPHandler = [&](UComboBoxString* ComboBox, EResourceType ResourceType)
+    {
+        if (!ComboBox) return;
+        ComboBox->ClearOptions();
+        
+        int32 CurrentValue = ResourcesSelected.Contains(ResourceType) ? ResourcesSelected[ResourceType] : 0;
+
+        // Determine available options based on remaining selections
+        if (TotalAmount == 0)
+        {
+            // No selections yet: allow 0, 1, or 2
+            ComboBox->AddOption(TEXT("0"));
+            ComboBox->AddOption(TEXT("1"));
+            ComboBox->AddOption(TEXT("2"));
+        }
+        else if (TotalAmount == 1)
+        {
+            // One resource selected: allow 0 or 1 for others, keep current for selected
+            if (CurrentValue > 0)
+            {
+                // This resource is selected, keep its value and allow reducing to 0
+                ComboBox->AddOption(TEXT("0"));
+                ComboBox->AddOption(FString::FromInt(CurrentValue));
+            }
+            else
+            {
+                // This resource not selected, allow 0 or 1
+                ComboBox->AddOption(TEXT("0"));
+                ComboBox->AddOption(TEXT("1"));
+            }
+        }
+        else // TotalAmount >= 2
+        {
+            // Two resources selected: only allow 0 for unselected, keep current for selected
+            if (CurrentValue > 0)
+            {
+                ComboBox->AddOption(TEXT("0"));
+                ComboBox->AddOption(FString::FromInt(CurrentValue));
+            }
+            else
+            {
+                ComboBox->AddOption(TEXT("0"));
+            }
+        }
+        
+        // Set selection based on ResourcesSelected map (not GetSelectedOption which is stale during OnSelectionChanged)
+        ComboBox->SetSelectedOption(FString::FromInt(CurrentValue));
+
+        UComboBoxSelectionHandler* Handler = NewObject<UComboBoxSelectionHandler>(this);
+        Handler->ResourceType = ResourceType;
+        Handler->bIsYouGet = false;
+        Handler->bIsYOP = true;
+        Handler->ParentWidget = this;
+        YOPComboBoxHandlers.Add(Handler);
+        ComboBox->OnSelectionChanged.AddDynamic(Handler, &UComboBoxSelectionHandler::HandleSelectionChanged);
+    };
+
+    SetupYOPHandler(WoodSelection_7, EResourceType::Wood);
+    SetupYOPHandler(BrickSelection_7, EResourceType::Brick);
+    SetupYOPHandler(SheepSelection_7, EResourceType::Sheep);
+    SetupYOPHandler(WheatSelection_7, EResourceType::Wheat);
+    SetupYOPHandler(OreSelection_7, EResourceType::Ore);
+}
+
+void UDebugUserWidget::OnYOPComboboxChanged(const FString& SelectedItem, ESelectInfo::Type SelectionType, EResourceType ResourceType)
+{
+    if (SelectionType == ESelectInfo::Direct) return;
+
+    int32 Amount = FCString::Atoi(*SelectedItem);
+    
+    if (Amount > 0)
+    {
+        ResourcesSelected.FindOrAdd(ResourceType) = Amount;
+    }
+    else
+    {
+        ResourcesSelected.Remove(ResourceType);
+    }
+
+    UE_LOG(LogTemp, Log, TEXT("OnYOPSelectionChanged: %d set to %d"), (int32)ResourceType, Amount);
+    
+    if (ResourceType == EResourceType::Brick)
+    {
+        BrickSelection_7->SetSelectedOption(FString::FromInt(ResourcesSelected.Contains(EResourceType::Brick) ? ResourcesSelected[EResourceType::Brick] : 0));
+    }
+    else if (ResourceType == EResourceType::Ore)
+    {
+        OreSelection_7->SetSelectedOption(FString::FromInt(ResourcesSelected.Contains(EResourceType::Ore) ? ResourcesSelected[EResourceType::Ore] : 0));
+    }
+    else if (ResourceType == EResourceType::Sheep)
+    {
+        SheepSelection_7->SetSelectedOption(FString::FromInt(ResourcesSelected.Contains(EResourceType::Sheep) ? ResourcesSelected[EResourceType::Sheep] : 0));
+    }
+    else if (ResourceType == EResourceType::Wheat)
+    {
+        WheatSelection_7->SetSelectedOption(FString::FromInt(ResourcesSelected.Contains(EResourceType::Wheat) ? ResourcesSelected[EResourceType::Wheat] : 0));
+    }
+    else if (ResourceType == EResourceType::Wood)
+    {
+        WoodSelection_7->SetSelectedOption(FString::FromInt(ResourcesSelected.Contains(EResourceType::Wood) ? ResourcesSelected[EResourceType::Wood] : 0));
+    }
+    
+    DetermineAmountGotten();
+    InitializeYOPComboboxes();
+}
+
+void UDebugUserWidget::DetermineAmountGotten()
+{
+    int32 TotalSelected = 0;
+    for (auto Element : ResourcesSelected)
+    {
+        TotalSelected += Element.Value;
+    }
+    YOPText->SetText(FText::FromString(FString::Printf(TEXT("Choose two resources for free: %d/%d"), TotalSelected, 2)));
+}
+
+void UDebugUserWidget::ShowYOPModal()
+{
+    YOPModalUI->SetVisibility(ESlateVisibility::Visible);
+    // Set COMBOBOXES
+    InitializeYOPComboboxes();
+    WoodSelection_7->SetSelectedOption(TEXT("0"));
+    BrickSelection_7->SetSelectedOption(TEXT("0"));
+    SheepSelection_7->SetSelectedOption(TEXT("0"));
+    WheatSelection_7->SetSelectedOption(TEXT("0"));
+    OreSelection_7->SetSelectedOption(TEXT("0"));
+}
+
+void UDebugUserWidget::HideYOPModal()
+{
+    YOPModalUI->SetVisibility(ESlateVisibility::Hidden);
+}
+
+void UDebugUserWidget::FinaliseYOP()
+{
+    AGameModeCPP* GameMode = GetWorld()->GetAuthGameMode<AGameModeCPP>();
+    FPlayerData* CurrentPlayer = &GameMode->GetCurrentPlayer();
+    for (auto Element : ResourcesSelected)
+    {
+        CurrentPlayer->AddResource(Element.Key, Element.Value);
+    }
+    ResourcesSelected.Empty();
+    HideYOPModal();
+}
+
+void UDebugUserWidget::OnClickedBrickMN()
+{
+    GetWorld()->GetAuthGameMode<AGameModeCPP>()->MonopolyResource(GetWorld()->GetAuthGameMode<AGameModeCPP>()->GetCurrentPlayer().PlayerColor, EResourceType::Brick);
+    HideMonopolyModal();
+}
+
+void UDebugUserWidget::OnClickedOreMN()
+{
+    GetWorld()->GetAuthGameMode<AGameModeCPP>()->MonopolyResource(GetWorld()->GetAuthGameMode<AGameModeCPP>()->GetCurrentPlayer().PlayerColor, EResourceType::Ore);
+    HideMonopolyModal();
+}
+
+void UDebugUserWidget::OnClickedSheepMN()
+{
+    GetWorld()->GetAuthGameMode<AGameModeCPP>()->MonopolyResource(GetWorld()->GetAuthGameMode<AGameModeCPP>()->GetCurrentPlayer().PlayerColor, EResourceType::Sheep);
+    HideMonopolyModal();
+}
+
+void UDebugUserWidget::OnClickedWheatMN()
+{
+    GetWorld()->GetAuthGameMode<AGameModeCPP>()->MonopolyResource(GetWorld()->GetAuthGameMode<AGameModeCPP>()->GetCurrentPlayer().PlayerColor, EResourceType::Wheat);
+    HideMonopolyModal();
+}
+
+void UDebugUserWidget::OnClickedWoodMN()
+{
+    GetWorld()->GetAuthGameMode<AGameModeCPP>()->MonopolyResource(GetWorld()->GetAuthGameMode<AGameModeCPP>()->GetCurrentPlayer().PlayerColor, EResourceType::Wood);
+    HideMonopolyModal();
+}
+
+void UDebugUserWidget::ShowMonopolyModal()
+{
+    MonopolyModalUI->SetVisibility(ESlateVisibility::Visible);
+    MNBrickBTN->OnClicked.AddDynamic(this, &UDebugUserWidget::OnClickedBrickMN);
+    MNOreBTN->OnClicked.AddDynamic(this, &UDebugUserWidget::OnClickedOreMN);
+    MNSheepBTN->OnClicked.AddDynamic(this, &UDebugUserWidget::OnClickedSheepMN);
+    MNWheatBTN->OnClicked.AddDynamic(this, &UDebugUserWidget::OnClickedWheatMN);
+    MNWoodBTN->OnClicked.AddDynamic(this, &UDebugUserWidget::OnClickedWoodMN);
+}
+
+void UDebugUserWidget::HideMonopolyModal()
+{
+    MonopolyModalUI->SetVisibility(ESlateVisibility::Hidden);
+}
+
+// =============================================================
+// 10.0 Game Over
+// =============================================================
+
+void UDebugUserWidget::ShowGameOver(EPlayerColor Winner)
+{
+    FString WinnerName = UEnum::GetValueAsString(Winner).Replace(TEXT("EPlayerColor::"), TEXT(""));
+    GameOverText->SetText(FText::FromString(FString::Printf(TEXT("%s wins the game!"), *WinnerName)));
+    GameOverUI->SetVisibility(ESlateVisibility::Visible);
+    AGameModeCPP* GameMode = GetWorld()->GetAuthGameMode<AGameModeCPP>();
+    if (GameMode)    {
+        GameMode->PauseGame(true);
     }
 }

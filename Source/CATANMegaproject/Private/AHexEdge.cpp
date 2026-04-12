@@ -2,6 +2,8 @@
 
 
 #include "AHexEdge.h"
+
+#include "GameModeCPP.h"
 #include "HexVertex.h"
 #include "HexTile.h"
 
@@ -72,6 +74,18 @@ bool AAHexEdge::TryPlaceRoad(EPlayerColor PlayerColor)
 		occupiedBy = PlayerColor;
 		isOccupied = true;
 		UE_LOG(LogTemp, Warning, TEXT("Placed road for player %d"), (int32)occupiedBy);
+	}
+	AGameModeCPP* GameMode = GetWorld()->GetAuthGameMode<AGameModeCPP>();
+	if (GameMode->GetPlayerByColor(PlayerColor).RoadsPlaced >= 15)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Player %d has already placed the maximum number of roads!"), (int32)PlayerColor);
+		return false;
+	}
+	if (bCanPlaceRoad)
+	{
+		
+		FPlayerData Player = GameMode->GetPlayerByColor(PlayerColor);
+		Player.IncreaseRoadsPlaced(1);
 	}
 	return bCanPlaceRoad;
 }

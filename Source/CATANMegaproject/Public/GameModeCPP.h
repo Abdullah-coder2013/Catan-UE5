@@ -35,9 +35,13 @@ class CATANMEGAPROJECT_API AGameModeCPP : public AGameModeBase
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Players")
 	TArray<FPlayerData> Players;
+	
+	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "GameMode Settings")
+	TArray<FDevelopmentCard> DevelopmentCards;
 
 	void RollDice();
 	void DistributeResources(int32 DiceRoll);
+	void DistributeResourcesFor(AHexVertex* HexVertex);
 	void InitializePlayers(TArray<EPlayerColor> PlayerColors);
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Turn System Settings")
@@ -73,6 +77,10 @@ class CATANMEGAPROJECT_API AGameModeCPP : public AGameModeBase
 	bool bShouldPlaceCity;
 	UPROPERTY()
 	bool bShouldPlaceRobber;
+	UPROPERTY()
+	bool bCanPlaceTwoRoads;
+	UPROPERTY()
+	int32 RoadsPlaced;
 	
 	void ChangeRules(EBuildable ruleType, bool value);
 
@@ -95,6 +103,19 @@ class CATANMEGAPROJECT_API AGameModeCPP : public AGameModeBase
 	TMap<EResourceType, int32> GetPlayerResources(EPlayerColor PlayerColor) const;
 
 	TArray<EBankTradeMethods> GetAvailableBankTradeMethods(EPlayerColor PlayerColor) const;
+	
+	void GiveAward(EPlayerColor PlayerColor, EAwardType AwardType);
+	
+	void PauseGame(bool bPause);
+	
+	void InitializeDevCards();
+	void PlayDevelopmentCard(FDevelopmentCard* Card);
+	
+	void GiveDevCard(EPlayerColor PlayerColor);
+	
+	void MonopolyResource(EPlayerColor PlayerColor, EResourceType ResourceType);
+	
+	void CalculateLongestRoad();
 
 	void StartDiscardPhase();
 	void AdvanceDiscardPhase();
@@ -109,6 +130,12 @@ class CATANMEGAPROJECT_API AGameModeCPP : public AGameModeBase
 
 	UPROPERTY()
 	int32 DiscardQueueIndex = 0;
+	
+	UPROPERTY()
+	TMap<EPlayerColor, int32> longestRoadLengths;
+	
+	UPROPERTY()
+	TMap<EPlayerColor, EAwardType> PlayerAwards;
 
 	protected:
 	virtual void BeginPlay() override;

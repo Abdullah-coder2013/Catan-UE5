@@ -13,6 +13,10 @@ void UComboBoxSelectionHandler::HandleSelectionChanged(FString SelectedItem, ESe
         {
             ParentWidget->OnDiscardSelectionChanged(SelectedItem, SelectionType, ResourceType);
         }
+        else if (bIsYOP)
+        {
+            ParentWidget->OnYOPComboboxChanged(SelectedItem, SelectionType, ResourceType);
+        }
         else
         {
             ParentWidget->OnComboBoxSelectionChanged(SelectedItem, SelectionType, ResourceType, bIsYouGet);

@@ -31,6 +31,56 @@ FVector ABoardManager::AxialToWorld(int32 Q, int32 R) const
     return FVector(X, Y, 0.f);
 }
 
+int32 ABoardManager::DFS(AAHexEdge* CurrentEdge, AHexVertex* FromVertex, 
+                          TSet<AAHexEdge*>& VisitedEdges, EPlayerColor PlayerColor) const
+{
+    int32 MaxLength = 0;
+
+    for (AHexVertex* Vertex : CurrentEdge->AdjacentVertices)
+    {
+        if (Vertex && Vertex != FromVertex)
+        {
+            // Check if opponent blocks this vertex
+            if (Vertex->isOccupied && Vertex->occupiedBy != PlayerColor)
+                continue;
+
+            for (AAHexEdge* AdjacentEdge : Vertex->AdjacentEdges)
+            {
+                if (AdjacentEdge && AdjacentEdge->isOccupied 
+                    && AdjacentEdge->occupiedBy == PlayerColor 
+                    && !VisitedEdges.Contains(AdjacentEdge))
+                {
+                    VisitedEdges.Add(AdjacentEdge);
+                    int32 Length = 1 + DFS(AdjacentEdge, Vertex, VisitedEdges, PlayerColor);
+                    MaxLength = FMath::Max(MaxLength, Length);
+                    VisitedEdges.Remove(AdjacentEdge); // backtrack
+                }
+            }
+        }
+    }
+    return MaxLength;
+}
+
+int32 ABoardManager::GetLongestRoadLengthForPlayer(EPlayerColor PlayerColor) const
+{
+    int32 LongestRoad = 0;
+
+    for (AAHexEdge* Edge : SpawnedEdgesArray)
+    {
+        if (Edge && Edge->isOccupied && Edge->occupiedBy == PlayerColor)
+        {
+            for (AHexVertex* StartVertex : Edge->AdjacentVertices)
+            {
+                TSet<AAHexEdge*> VisitedEdges;
+                VisitedEdges.Add(Edge);
+                int32 Length = 1 + DFS(Edge, StartVertex, VisitedEdges, PlayerColor);
+                LongestRoad = FMath::Max(LongestRoad, Length);
+            }
+        }
+    }
+    return LongestRoad;
+}
+
 void ABoardManager::GenerateBoard()
 {
     TArray<EHexType> TileTypes = {

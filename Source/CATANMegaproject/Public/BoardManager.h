@@ -56,5 +56,8 @@ public:
 	FVector AxialToWorld(int32 Q, int32 R) const;
 	TArray<AHexTile*> GetHexTiles() const { return HexTiles; }
 	TArray<ADock*> GetDocks() const { return Docks; }
+	int32 GetLongestRoadLengthForPlayer(EPlayerColor PlayerColor) const;
+	int32 DFS(AAHexEdge* CurrentEdge, AHexVertex* FromVertex, 
+						  TSet<AAHexEdge*>& VisitedEdges, EPlayerColor PlayerColor) const;
 
 };

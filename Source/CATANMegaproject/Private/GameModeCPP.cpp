@@ -220,6 +220,138 @@ int32 AGameModeCPP::GetTotalCardsInHand(EPlayerColor PlayerColor)
     return Amount;
 }
 
+void AGameModeCPP::InitializeDevCards()
+{
+    // Add all the dev cards to cardslist
+    DevelopmentCards.Empty();
+    for (int32 i = 0; i < 14; i++)
+    {
+        DevelopmentCards.Add(FDevelopmentCard(EDevelopmentCardType::Knight, false, EPlayerColor::None));
+    }
+    for (int32 i = 0; i < 5; i++)
+    {
+        DevelopmentCards.Add(FDevelopmentCard(EDevelopmentCardType::VictoryPoint, false, EPlayerColor::None));
+    }
+    for (int32 i = 0; i < 2; i++)
+    {
+        DevelopmentCards.Add(FDevelopmentCard(EDevelopmentCardType::RoadBuilding, false, EPlayerColor::None));
+        DevelopmentCards.Add(FDevelopmentCard(EDevelopmentCardType::YearsOfPlenty, false, EPlayerColor::None));
+        DevelopmentCards.Add(FDevelopmentCard(EDevelopmentCardType::Monopoly, false, EPlayerColor::None));
+    }
+    
+    // Mix the cards thoroughly
+    for (int32 i = DevelopmentCards.Num() - 1; i >= 0; i--)
+    {
+        int32 j = FMath::RandRange(0, i);
+        DevelopmentCards.Swap(i, j);
+    }
+}
+
+void AGameModeCPP::PlayDevelopmentCard(FDevelopmentCard* Card)
+{
+        UE_LOG(LogTemp, Log, TEXT("PlayDevelopmentCard: Player %d plays a %s card"), (int32)GetCurrentPlayer().PlayerColor, *UEnum::GetValueAsString(Card->DevelopmentCardType));
+        
+        switch (Card->DevelopmentCardType)
+        {
+            case EDevelopmentCardType::Knight:
+                // Robber
+                ChangeRules(EBuildable::None, false); // Disable all building during robber step
+                bShouldPlaceRobber = true;
+                DebugWidget->SetRobberText(true);
+                GiveAward(Card->OwnedBy, EAwardType::LargestArmy);
+                break;
+            case EDevelopmentCardType::VictoryPoint:
+                GetPlayerByColor(Card->OwnedBy).VictoryPoints += 1;
+                break;
+            case EDevelopmentCardType::RoadBuilding:
+                // Handle road building effect
+                bCanPlaceTwoRoads = true;
+                RoadsPlaced = 0;
+                ChangeRules(EBuildable::Road, true); // Allow placing roads
+                break;
+            case EDevelopmentCardType::YearsOfPlenty:
+                DebugWidget->ShowYOPModal();
+                break;
+            case EDevelopmentCardType::Monopoly:
+                DebugWidget->ShowMonopolyModal();
+                break;
+            default: break;
+        }
+        Card->bIsPlayed = true;
+}
+
+void AGameModeCPP::GiveDevCard(EPlayerColor PlayerColor)
+{
+    FPlayerData* PlayerData = &GetPlayerByColor(PlayerColor);
+    if (DevelopmentCards.Num() == 0)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("GiveDevCard: No more development cards available to give!"));
+        return;
+    }
+    // check if player can afford
+    bool bPlayerCanAfford = PlayerData->CanBuild(EBuildable::Development);
+    if (!bPlayerCanAfford)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("GiveDevCard: Player %d cannot afford to buy a development card!"), (int32)PlayerColor);
+        return;
+    }
+    
+    DevelopmentCards[0].OwnedBy = PlayerColor;
+    PlayerData->DevelopmentCards.Add(DevelopmentCards[0]);
+    PlayerData->SpendResourceFor(EBuildable::Development);
+     UE_LOG(LogTemp, Log, TEXT("GiveDevCard: Gave %d development card to Player %d. Cards left in deck: %d"), DevelopmentCards[0].DevelopmentCardType, (int32)PlayerColor, DevelopmentCards.Num()-1);
+    if (DevelopmentCards[0].DevelopmentCardType == EDevelopmentCardType::VictoryPoint)
+    {
+        PlayDevelopmentCard(&DevelopmentCards[0]);
+    }
+    DevelopmentCards.RemoveAt(0);
+    DebugWidget->UpdateDevCards();
+    UE_LOG(LogTemp, Warning, TEXT("Player %d: %d Knight cards, %d YOP cards, %d RoadBuilding cards, %d Monopoly cards, %d Victory Points cards"), GetCurrentPlayer().PlayerColor, GetCurrentPlayer().GetDevelopmentCardAmount(EDevelopmentCardType::Knight), GetCurrentPlayer().GetDevelopmentCardAmount(EDevelopmentCardType::YearsOfPlenty), GetCurrentPlayer().GetDevelopmentCardAmount(EDevelopmentCardType::RoadBuilding), GetCurrentPlayer().GetDevelopmentCardAmount(EDevelopmentCardType::Monopoly), GetCurrentPlayer().GetDevelopmentCardAmount(EDevelopmentCardType::VictoryPoint));
+}
+
+void AGameModeCPP::MonopolyResource(EPlayerColor PlayerColor, EResourceType ResourceType)
+{
+    int32 TotalStolen = 0;
+    for (FPlayerData& Player : Players)
+    {
+        if (Player.PlayerColor != PlayerColor)
+        {
+            int32 AmountToSteal = Player.Resources.Contains(ResourceType) ? Player.Resources[ResourceType] : 0;
+            if (AmountToSteal > 0)
+            {
+                Player.SpendResource(ResourceType, AmountToSteal);
+                GetPlayerByColor(PlayerColor).AddResource(ResourceType, AmountToSteal);
+                TotalStolen += AmountToSteal;
+            }
+        }
+    }
+    UE_LOG(LogTemp, Log, TEXT("MonopolyResource: Player %d monopolizes %d of %s"), (int32)PlayerColor, TotalStolen, *UEnum::GetValueAsString(ResourceType));
+}
+
+void AGameModeCPP::CalculateLongestRoad()
+{
+    for (FPlayerData& Player : Players)
+    {
+        int32 LongestRoad = BoardManager->GetLongestRoadLengthForPlayer(Player.PlayerColor);
+        longestRoadLengths.Add(Player.PlayerColor, LongestRoad);
+    }
+    // Discard from the longest road
+    int32 longest = 0;
+    EPlayerColor longestPlayer = EPlayerColor::None;
+    for (auto Road : longestRoadLengths)
+    {
+        if (Road.Value > longest)
+        {
+            longest = Road.Value;
+            longestPlayer = Road.Key;
+        }
+    }
+    longestRoadLengths.Empty();
+    longestRoadLengths.Add(longestPlayer, longest);
+     UE_LOG(LogTemp, Log, TEXT("CalculateLongestRoad: Player %d has the longest road with length %d"), (int32)longestPlayer, longest);
+    GiveAward(longestPlayer, EAwardType::LongestRoad);
+}
+
 void AGameModeCPP::DiscardResources(EPlayerColor PlayerColor, TMap<EResourceType, int32> Resources)
 {
     TMap<EResourceType, int32> PlayerResources = GetPlayerResources(PlayerColor);
@@ -291,6 +423,95 @@ TArray<EBankTradeMethods> AGameModeCPP::GetAvailableBankTradeMethods(EPlayerColo
     return Available;
 }
 
+void AGameModeCPP::GiveAward(EPlayerColor PlayerColor, EAwardType AwardType)
+{
+    if (AwardType == EAwardType::LongestRoad && longestRoadLengths.Contains(PlayerColor) && longestRoadLengths[PlayerColor] >= 5)
+    {
+        if (PlayerAwards.Contains(PlayerColor) && PlayerAwards[PlayerColor] == EAwardType::LongestRoad)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("GiveAward: Player %d already has the Longest Road award!"), (int32)PlayerColor);
+            return;
+        }
+
+        // Remove award from previous holder
+        EPlayerColor PreviousRoadHolder = EPlayerColor::None;
+        for (auto& Award : PlayerAwards)
+        {
+            if (Award.Value == EAwardType::LongestRoad)
+            {
+                PreviousRoadHolder = Award.Key;
+                break;
+            }
+        }
+        if (PreviousRoadHolder != EPlayerColor::None)
+        {
+            PlayerAwards.Remove(PreviousRoadHolder);
+            GetPlayerByColor(PreviousRoadHolder).VictoryPoints -= 2;
+            UE_LOG(LogTemp, Log, TEXT("GiveAward: Player %d loses Longest Road award!"), (int32)PreviousRoadHolder);
+        }
+
+        PlayerAwards.Add(PlayerColor, EAwardType::LongestRoad);
+        GetPlayerByColor(PlayerColor).VictoryPoints += 2;
+        UE_LOG(LogTemp, Log, TEXT("GiveAward: Player %d awarded Longest Road!"), (int32)PlayerColor);
+    }
+    else if (AwardType == EAwardType::LargestArmy)
+    {
+        // Count PLAYED Knight cards (not unplayed ones)
+        int32 KnightCount = 0;
+        for (auto& Card : GetPlayerByColor(PlayerColor).DevelopmentCards)
+        {
+            if (Card.DevelopmentCardType == EDevelopmentCardType::Knight && Card.bIsPlayed)
+            {
+                KnightCount++;
+            }
+        }
+
+        int32 LargestArmySize = 0;
+        EPlayerColor LargestArmyHolder = EPlayerColor::None;
+        for (auto& Award : PlayerAwards)
+        {
+            if (Award.Value == EAwardType::LargestArmy)
+            {
+                // Count PLAYED Knight cards for current holder too
+                int32 CurrentHolderKnightCount = 0;
+                for (auto& Card : GetPlayerByColor(Award.Key).DevelopmentCards)
+                {
+                    if (Card.DevelopmentCardType == EDevelopmentCardType::Knight && Card.bIsPlayed)
+                    {
+                        CurrentHolderKnightCount++;
+                    }
+                }
+                if (CurrentHolderKnightCount > LargestArmySize)
+                {
+                    LargestArmySize = CurrentHolderKnightCount;
+                    LargestArmyHolder = Award.Key;
+                }
+            }
+        }
+        if (KnightCount >= 3 && KnightCount > LargestArmySize)
+        {
+            if (LargestArmyHolder != EPlayerColor::None)
+            {
+                PlayerAwards.Remove(LargestArmyHolder);
+                GetPlayerByColor(LargestArmyHolder).VictoryPoints -= 2;
+                 UE_LOG(LogTemp, Log, TEXT("GiveAward: Player %d loses Largest Army award!"), (int32)LargestArmyHolder);
+            }
+            PlayerAwards.Add(PlayerColor, EAwardType::LargestArmy);
+            GetPlayerByColor(PlayerColor).VictoryPoints += 2;
+             UE_LOG(LogTemp, Log, TEXT("GiveAward: Player %d awarded Largest Army!"), (int32)PlayerColor);
+        }
+    }
+}
+
+void AGameModeCPP::PauseGame(bool bPause)
+{
+    APlayerController* PC = GetWorld()->GetFirstPlayerController();
+    if (PC)
+    {
+        PC->SetPause(bPause);
+    }
+}
+
 // Beginplay
 void AGameModeCPP::BeginPlay()
 {
@@ -348,12 +569,31 @@ void AGameModeCPP::Tick(float DeltaTime)
         {
             DebugWidget->SetVisibleBM(true);
             DebugWidget->TradeButtonUI->SetIsEnabled(true); // Disable trade button during dynamic environment step
+            DebugWidget->DevCardButtonUI->SetIsEnabled(true);
         }
         else
         {
             DebugWidget->SetVisibleBM(false);
             DebugWidget->TradeButtonUI->SetIsEnabled(false);
+            DebugWidget->DevCardButtonUI->SetIsEnabled(false);
         }
+        if (bCanPlaceTwoRoads && RoadsPlaced < 2)
+        {
+            DebugWidget->SetRoadBuildingText(true, RoadsPlaced);
+        }
+        else
+        {
+            DebugWidget->SetRoadBuildingText(false, RoadsPlaced);
+        }
+        DebugWidget->UpdateDevCards();
+    }
+    
+    if (RoadsPlaced == 2 && bCanPlaceTwoRoads == true)
+    {
+        RoadsPlaced = 0;
+        bCanPlaceTwoRoads = false;
+         ChangeRules(EBuildable::Road, false); // Disable road placement after using road
+        CurrentTurnStep = ETurnStep::DynamicEnvironment;
     }
     
 }
@@ -455,6 +695,13 @@ void AGameModeCPP::AdvanceStep() {
         }
     }
     else if (CurrentTurnStep == ETurnStep::DynamicEnvironment) {
+        if (GetCurrentPlayer().VictoryPoints >= 10)
+        {
+            CurrentTurnStep = ETurnStep::None;
+            CurrentPhase = EGamePhase::GameOver;
+            DebugWidget->ShowGameOver(GetCurrentPlayer().PlayerColor);
+            return;
+        }
         CurrentTurnStep = ETurnStep::RollDice;
         EndTurn();
     }
@@ -481,6 +728,7 @@ void AGameModeCPP::StartGame() {
         }
     }
     InitializePlayers(DefaultColors);
+    InitializeDevCards();
     AdvanceSetup(true);
 }
 
@@ -553,6 +801,16 @@ void AGameModeCPP::DistributeResources(int32 DiceRoll)
     }
     UE_LOG(LogTemp, Log, TEXT("Resource distribution complete for dice roll: %d"), DiceRoll);
 
+}
+
+void AGameModeCPP::DistributeResourcesFor(AHexVertex* HexVertex)
+{
+    FPlayerData* Player = &GetPlayerByColor(HexVertex->occupiedBy);
+    if (!Player) return;
+    for (auto HexTile : HexVertex->AdjacentHexes)
+    {
+        Player->AddResource(HexTile->HexTypeToResource(), 1);
+    }
 }
 
 void AGameModeCPP::RollDice()

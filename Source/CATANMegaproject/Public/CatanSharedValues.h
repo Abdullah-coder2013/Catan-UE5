@@ -82,7 +82,16 @@ struct FResourceCosts
     UPROPERTY()
     TMap<EResourceType, int32> Costs;
 };
-
+UENUM(BlueprintType)
+enum class EDevelopmentCardType : uint8
+{
+    None,
+    Knight,
+    YearsOfPlenty,
+    RoadBuilding,
+    VictoryPoint,
+    Monopoly
+};
 UENUM(BlueprintType)
 enum class EGamePhase : uint8
 {
@@ -101,6 +110,54 @@ enum class ETurnStep : uint8
     RobberSteal
 };
 
+UENUM(BlueprintType)
+enum class EAwardType : uint8
+{
+    None,
+    LargestArmy,
+    LongestRoad
+};
+
+USTRUCT(BlueprintType)
+struct FDevelopmentCard
+{
+    GENERATED_BODY()
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Development Card")
+    EDevelopmentCardType DevelopmentCardType;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Development Card")
+    bool bIsPlayed;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Development Card")
+    EPlayerColor OwnedBy;
+
+    // Default constructor
+    FDevelopmentCard() : DevelopmentCardType(EDevelopmentCardType::None), bIsPlayed(false), OwnedBy(EPlayerColor::None) {}
+
+    // Custom constructor
+    FDevelopmentCard(EDevelopmentCardType InDevelopmentCardType, bool bInIsPlayed = false, EPlayerColor bInOwnedByPlayer = EPlayerColor::None)
+        : DevelopmentCardType(InDevelopmentCardType), bIsPlayed(bInIsPlayed), OwnedBy(bInOwnedByPlayer) {}
+
+    // Equality operator
+    bool operator==(const FDevelopmentCard& Other) const
+    {
+        return DevelopmentCardType == Other.DevelopmentCardType &&
+               bIsPlayed == Other.bIsPlayed &&
+               OwnedBy == Other.OwnedBy;
+    }
+
+    // Hash function for use in TMap or other hash-based containers
+    friend uint32 GetTypeHash(const FDevelopmentCard& Key)
+    {
+        uint32 Hash = GetTypeHash(Key.DevelopmentCardType);
+        Hash = HashCombine(Hash, Key.bIsPlayed ? 1u : 0u);
+        Hash = HashCombine(Hash, GetTypeHash(Key.OwnedBy));
+        return Hash;
+    }
+};
+
+
 USTRUCT(BlueprintType)
 struct FPlayerData
 {
@@ -111,12 +168,21 @@ struct FPlayerData
     
     UPROPERTY(BlueprintReadWrite, Category = "Player")
     int32 VictoryPoints = 0;
+    
+    UPROPERTY(BlueprintReadWrite, Category = "Player")
+    int32 KnightCardsPlayed = 0;
+    
+    UPROPERTY(BlueprintReadWrite, Category = "Player")
+    int32 RoadsPlaced = 0;
 
     UPROPERTY(BlueprintReadWrite, Category = "Player")
     TMap<EResourceType, int32> Resources;
 
     UPROPERTY(BlueprintReadWrite, Category = "General")
     TMap<EBuildable, FResourceCosts> ResourceCosts;
+    
+    UPROPERTY(BlueprintReadWrite, Category = "General")
+    TArray<FDevelopmentCard> DevelopmentCards;
 
     FPlayerData()
     {
@@ -186,6 +252,31 @@ struct FPlayerData
         DevelopmentCost.Costs.Add(EResourceType::Ore, 1);
         ResourceCosts.Add(EBuildable::Development, DevelopmentCost);
     }
+    
+    int32 GetDevelopmentCardAmount(EDevelopmentCardType CardType)
+    {
+        int32 Total = 0;
+        for (auto& Card : DevelopmentCards)
+        {
+            if (Card.DevelopmentCardType == CardType && Card.bIsPlayed == false)
+            {
+                Total++;
+            }
+        }
+        return Total;
+    }
+
+    FDevelopmentCard* GetFirstDevelopmentCardOfType(EDevelopmentCardType CardType)
+    {
+        for (auto& CardPair : DevelopmentCards)
+        {
+            if (CardPair.DevelopmentCardType == CardType && CardPair.bIsPlayed == false)
+            {
+                return &CardPair;
+            }
+        }
+        return nullptr; // Return nullptr if no card is found
+    }
 
     void AddResource(EResourceType ResourceType, int32 Amount)
     {
@@ -193,6 +284,21 @@ struct FPlayerData
         {
             Resources[ResourceType] += Amount;
         }
+    }
+    
+    void IncreaseRoadsPlaced(int value)
+    {
+        RoadsPlaced += value;
+    }
+    
+    void IncreaseKnightCardsPlayed(int value)
+    {
+        KnightCardsPlayed += value;
+    }
+    
+    void AddDevCard(EDevelopmentCardType CardType)
+    {
+        DevelopmentCards.Add(FDevelopmentCard(CardType));
     }
 
     void SpendResource(EResourceType ResourceType, int32 Amount)
@@ -253,3 +359,7 @@ struct FPlayerData
         return 0;
     }
 };
+
+/**
+ * 
+ */

@@ -25,6 +25,9 @@ public:
 
 	UPROPERTY()
 	bool bIsDiscard = false;
+	
+	UPROPERTY()
+	bool bIsYOP = false;
 
 	UPROPERTY()
 	class UDebugUserWidget* ParentWidget;

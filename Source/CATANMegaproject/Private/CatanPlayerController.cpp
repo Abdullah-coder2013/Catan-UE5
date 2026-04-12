@@ -5,6 +5,7 @@
 #include "EnhancedInputComponent.h"
 #include "HexVertex.h"
 #include "AHexEdge.h"
+#include "CatanCheatManager.h"
 #include "GameModeCPP.h"
 #include "EnhancedInputSubsystems.h"
 
@@ -15,6 +16,7 @@ ACatanPlayerController::ACatanPlayerController()
     bShowMouseCursor = true;
     bEnableClickEvents = true;
     CurrentPlayerPlaying = FPlayerData(EPlayerColor::None);
+    CheatClass = UCatanCheatManager::StaticClass();
 }
 
 void ACatanPlayerController::ChangePlayer(FPlayerData NewPlayer)
@@ -42,6 +44,9 @@ void ACatanPlayerController::BeginPlay()
     {
         Subsystem->AddMappingContext(CatanMappingContext, 0);
     }
+#if !UE_BUILD_SHIPPING
+    EnableCheats(); // Enables the cheat manager
+#endif
 }
 
 void ACatanPlayerController::SetupInputComponent()
@@ -111,6 +116,7 @@ void ACatanPlayerController::OnClick(const FInputActionValue& Value)
                             GameMode->GetCurrentPlayer().AddVictoryPoint(1);
                             if (GameMode->CurrentPhase == EGamePhase::Setup)
                             {
+                                GameMode->DistributeResourcesFor(Vertex);
                                 GameMode->AdvanceSetup(false);
                             }
                         }
@@ -149,11 +155,19 @@ void ACatanPlayerController::OnClick(const FInputActionValue& Value)
             {
                 if (bCanPlaceRoad)
                 {
+                    if (GameMode->bCanPlaceTwoRoads && GameMode->RoadsPlaced < 2)
+                    {
+                        if (Edge->TryPlaceRoad(PlayerColor))
+                        {
+                            GameMode->RoadsPlaced++;
+                        }
+                    }
                     if (GameMode->GetCurrentPlayer().CanBuild(EBuildable::Road) || GameMode->CurrentPhase == EGamePhase::Setup)
                     {
                         if (Edge->TryPlaceRoad(PlayerColor))
                         {
                             GameMode->GetCurrentPlayer().SpendResourceFor(EBuildable::Road);
+                            GameMode->CalculateLongestRoad();
                             if (GameMode->CurrentPhase == EGamePhase::Setup)
                             {
                                 GameMode->AdvanceSetup(false);

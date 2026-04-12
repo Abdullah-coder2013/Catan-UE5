@@ -140,6 +140,8 @@ public:
 	void OnClickedBuildModal();
 	UFUNCTION()
 	void OnClickedCloseButtonBM();
+	UFUNCTION()
+	void OnClickedDevelopmentUpgrade();
 
 	// ============================================================
 	// 3. Player Trade Modal
@@ -466,6 +468,148 @@ public:
 	
 	UFUNCTION()
 	void FinishRobPhase();
+	
+	// ============================================================
+	// 9.0 Development Cards: General
+	// ============================================================
+	
+	UPROPERTY(meta=(BindWidget))
+	UButton* DevCardButtonUI = nullptr;
+	UPROPERTY(meta=(BindWidget))
+	UButton* CloseBTN_7 = nullptr;
+	UPROPERTY(meta=(BindWidget))
+	UTextBlock* RoadBuildingText = nullptr;
+	UPROPERTY(meta=(BindWidget))
+	UBackgroundBlur* DevelopmentCardsUI = nullptr;
+	
+	UPROPERTY(meta=(BindWidget))
+	UTextBlock* KnightAmount = nullptr;
+	UPROPERTY(meta=(BindWidget))
+	UButton* KnightBTN = nullptr;
+	
+	UPROPERTY(meta=(BindWidget))
+	UTextBlock* VictoryPointAmount = nullptr;
+	UPROPERTY(meta=(BindWidget))
+	UButton* VictoryPointBTN = nullptr;
+	
+	UPROPERTY(meta=(BindWidget))
+	UTextBlock* YOPAmount = nullptr;
+	UPROPERTY(meta=(BindWidget))
+	UButton* YOPBTN = nullptr;
+	
+	UPROPERTY(meta=(BindWidget))
+	UTextBlock* MonopolyAmount = nullptr;
+	UPROPERTY(meta=(BindWidget))
+	UButton* MonopolyBTN = nullptr;
+	
+	UPROPERTY(meta=(BindWidget))
+	UTextBlock* RoadBuildingAmount = nullptr;
+	UPROPERTY(meta=(BindWidget))
+	UButton* RoadBuildingBTN = nullptr;
+	
+	void SetRoadBuildingText(bool bEnable, int32 roadsBuilt);
+	UFUNCTION()
+	void SetDevCardUIEnabled();
+	UFUNCTION()
+	void SetDevCardUIDisabled();
+	
+	void UpdateDevCards();
+	
+	UFUNCTION()
+	void OnClickedKnight();
+	UFUNCTION()
+	void OnClickedYOP();
+	UFUNCTION()
+	void OnClickedMonopoly();
+	UFUNCTION()
+	void OnClickedRoadBuilding();
+	
+	// ============================================================
+	// 9.1 Development Cards: YOP and Monopoly Modal Menus
+	// ============================================================
+	
+	// YOP
+	UPROPERTY(meta=(BindWidget))
+	UBackgroundBlur* YOPModalUI = nullptr;
+	UPROPERTY(meta=(BindWidget))
+	UButton* CloseBTN_9 = nullptr;
+	UPROPERTY(meta=(BindWidget))
+	UButton* YOPFinaliseButton = nullptr;
+	UPROPERTY(meta=(BindWidget))
+	UTextBlock* YOPText = nullptr;
+	
+	UPROPERTY()
+	TMap<EResourceType, int32> ResourcesSelected;
+	
+	UPROPERTY()
+	TArray<UComboBoxSelectionHandler*> YOPComboBoxHandlers; 
+	
+	UPROPERTY(meta=(BindWidget))
+	UComboBoxString* WoodSelection_7 = nullptr;
+	UPROPERTY(meta=(BindWidget))
+	UComboBoxString* BrickSelection_7 = nullptr;
+	UPROPERTY(meta=(BindWidget))
+	UComboBoxString* SheepSelection_7 = nullptr;
+	UPROPERTY(meta=(BindWidget))
+	UComboBoxString* WheatSelection_7 = nullptr;
+	UPROPERTY(meta=(BindWidget))
+	UComboBoxString* OreSelection_7 = nullptr;
+	
+	UFUNCTION()
+	void ShowYOPModal();
+	UFUNCTION()
+	void HideYOPModal();
+	
+	UFUNCTION()
+	void DetermineAmountGotten();
+	UFUNCTION()
+	void OnYOPComboboxChanged(const FString& SelectedItem, ESelectInfo::Type SelectionType, EResourceType ResourceType);
+	
+	UFUNCTION()
+	void InitializeYOPComboboxes();
+	UFUNCTION()
+	void FinaliseYOP();
+	
+	// Monopoly
+	UPROPERTY(meta=(BindWidget))
+	UButton* CloseBTN_8 = nullptr;
+	UPROPERTY(meta=(BindWidget))
+	UBackgroundBlur* MonopolyModalUI = nullptr;
+	UPROPERTY(meta=(BindWidget))
+	UButton* MNWoodBTN = nullptr;
+	UPROPERTY(meta=(BindWidget))
+	UButton* MNBrickBTN = nullptr;
+	UPROPERTY(meta=(BindWidget))
+	UButton* MNSheepBTN = nullptr;
+	UPROPERTY(meta=(BindWidget))	
+	UButton* MNWheatBTN = nullptr;
+	UPROPERTY(meta=(BindWidget))	
+	UButton* MNOreBTN = nullptr;
+	
+	UFUNCTION()
+	void OnClickedWoodMN();
+	UFUNCTION()
+	void OnClickedBrickMN();
+	UFUNCTION()
+	void OnClickedSheepMN();
+	UFUNCTION()
+	void OnClickedWheatMN();
+	UFUNCTION()
+	void OnClickedOreMN();
+	UFUNCTION()
+	void ShowMonopolyModal();
+	UFUNCTION()
+	void HideMonopolyModal();
+	// ============================================================
+	// Game Over Screen
+	// ============================================================
+	
+	UPROPERTY(meta=(BindWidget))
+	UBackgroundBlur* GameOverUI = nullptr;
+	UPROPERTY(meta=(BindWidget))
+	UTextBlock* GameOverText = nullptr;
+	
+	void ShowGameOver(EPlayerColor Winner);
 	
 	// ============================================================
 	// Lifecycle

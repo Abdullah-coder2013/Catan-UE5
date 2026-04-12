@@ -8,6 +8,8 @@
 #include "HexVertex.h"
 #include "AHexEdge.h"
 #include "Dock.h"
+#include "Engine/CanvasRenderTarget2D.h"
+#include "BoardTerrain.h"
 #include "BoardManager.generated.h"
 
 
@@ -33,6 +35,12 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dock Settings")
 	TSubclassOf<ADock> DockClass;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Hex Settings")
+	UMaterialInterface* HexMaterial;
+	
+	UPROPERTY(EditAnywhere, Category = "Terrain")
+	TSubclassOf<ABoardTerrain> BoardTerrainClass;
 
 protected:
 	// Called when the game starts or when spawned
@@ -51,6 +59,7 @@ protected:
 public:	
 	// Called every frame
 	void GenerateBoard();
+	void SnapActorsToTerrain();
 	AHexTile* GetHexTile(EHexType HexType);
 	AHexTile* GetRobberTile();
 	FVector AxialToWorld(int32 Q, int32 R) const;
@@ -59,5 +68,13 @@ public:
 	int32 GetLongestRoadLengthForPlayer(EPlayerColor PlayerColor) const;
 	int32 DFS(AAHexEdge* CurrentEdge, AHexVertex* FromVertex, 
 						  TSet<AAHexEdge*>& VisitedEdges, EPlayerColor PlayerColor) const;
+	void ComputeSmoothedElevations();
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Heightmap")
+	UCanvasRenderTarget2D* HeightmapRenderTarget;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Heightmap")
+	int32 HeightmapResolution = 512;
+
+	void ApplyMaterials();
+	FRotator GetRotationFromSurfaceNormal(const FVector& Normal, const FRotator& OriginalRotation);
 };

@@ -17,7 +17,7 @@ AHexTile::AHexTile()
 void AHexTile::BeginPlay()
 {
 	Super::BeginPlay();
-	
+	HexMesh->SetVisibility(false);
 }
 
 void AHexTile::InitializeHex(EHexType Type, int32 Token, int32 InQ, int32 InR, bool bInitialized)
@@ -27,7 +27,10 @@ void AHexTile::InitializeHex(EHexType Type, int32 Token, int32 InQ, int32 InR, b
 	Q = InQ;
 	R = InR;
 	isInitialized = bInitialized;
+	BaseElevation = GetBaseElevationForType(Type);
 }
+
+
 
 void AHexTile::PlaceRobber(AActor* RobberActor)
 {

@@ -5,6 +5,9 @@
 #include "HexTile.h"
 #include "HexVertex.h"
 #include "AHexEdge.h"
+#include "Engine/CanvasRenderTarget2D.h"
+#include "Kismet/KismetRenderingLibrary.h"
+#include "Engine/Canvas.h"
 
 // Sets default values
 ABoardManager::ABoardManager()
@@ -19,7 +22,42 @@ void ABoardManager::BeginPlay()
 {
 	Super::BeginPlay();
 	GenerateBoard();
-	
+	ComputeSmoothedElevations();
+    ApplyMaterials();
+    
+    if (BoardTerrainClass)
+    {
+        ABoardTerrain* Terrain = GetWorld()->SpawnActor<ABoardTerrain>(BoardTerrainClass,FVector(0, 0, 0),  // explicit location
+    FRotator::ZeroRotator);
+        if (Terrain)
+        {
+            Terrain->GenerateTerrain(HexTiles, HexSize);
+        }
+    }
+    SnapActorsToTerrain();
+}
+void ABoardManager::ApplyMaterials()
+{
+    for (AHexTile* Tile : HexTiles)
+    {
+        if (!Tile || !Tile->HexMesh) continue;
+
+        UMaterialInstanceDynamic* MatInst = 
+            UMaterialInstanceDynamic::Create(HexMaterial, this);
+        
+        // Pass smoothed elevation as a scalar
+        MatInst->SetScalarParameterValue(
+            FName("BiomeElevation"), Tile->SmoothedElevation);
+        
+        Tile->HexMesh->SetMaterial(0, MatInst);
+    }
+}
+
+FRotator ABoardManager::GetRotationFromSurfaceNormal(const FVector& Normal, const FRotator& OriginalRotation)
+{
+    // Keep the original yaw (facing direction) but pitch/roll to match slope
+    FRotator SlopeRotation = Normal.Rotation() - FRotator(90.f, 0.f, 0.f);
+    return FRotator(SlopeRotation.Pitch, OriginalRotation.Yaw, SlopeRotation.Roll);
 }
 
 // Called every frame
@@ -126,7 +164,7 @@ void ABoardManager::GenerateBoard()
                 
                 if (HexTileClass)
                 {
-                    FRotator HexRotation = FRotator::ZeroRotator;
+                    FRotator HexRotation = FRotator(0.f, 30.0f, 0.f);
                     AHexTile* NewHexTile = GetWorld()->SpawnActor<AHexTile>(HexTileClass, Location, HexRotation);
                     if (NewHexTile)
                     {
@@ -347,6 +385,154 @@ void ABoardManager::GenerateBoard()
     }
 
     UE_LOG(LogTemp, Log, TEXT("Spawned %d docks"), Docks.Num());
+}
+
+void ABoardManager::SnapActorsToTerrain()
+{
+    // Snap vertices
+    for (auto& Pair : SpawnedVertices)
+    {
+        AHexVertex* Vertex = Pair.Value;
+        if (!Vertex) continue;
+
+        FVector Start = Vertex->GetActorLocation() + FVector(0, 0, 500.f);
+        FVector End = Vertex->GetActorLocation() - FVector(0, 0, 500.f);
+
+        FHitResult Hit;
+        FCollisionQueryParams Params;
+        Params.AddIgnoredActor(Vertex);
+
+        if (GetWorld()->LineTraceSingleByChannel(Hit, Start, End, ECC_Visibility, Params))
+        {
+            FVector NewLoc = Vertex->GetActorLocation();
+            NewLoc.Z = Hit.ImpactPoint.Z + 2.f; // slight offset so it sits on top
+            Vertex->SetActorLocation(NewLoc);
+        }
+        // For vertices
+        if (GetWorld()->LineTraceSingleByChannel(Hit, Start, End, ECC_Visibility, Params))
+        {
+            FVector NewLoc = Vertex->GetActorLocation();
+            NewLoc.Z = Hit.ImpactPoint.Z + 2.f;
+            Vertex->SetActorLocation(NewLoc);
+    
+            // Align to slope
+            Vertex->SetActorRotation(
+                GetRotationFromSurfaceNormal(Hit.ImpactNormal, Vertex->GetActorRotation())
+            );
+        }
+    }
+    
+    // Snap edges - AFTER vertices are already snapped
+    for (AAHexEdge* Edge : SpawnedEdgesArray)
+    {
+        if (!Edge) continue;
+
+        // Get the two snapped vertex positions
+        AHexVertex* VertA = Edge->AdjacentVertices[0];
+        AHexVertex* VertB = Edge->AdjacentVertices[1];
+
+        if (!VertA || !VertB) continue;
+
+        FVector PosA = VertA->GetActorLocation();
+        FVector PosB = VertB->GetActorLocation();
+
+        // Place edge at midpoint between the two snapped vertices
+        FVector Midpoint = (PosA + PosB) / 2.f;
+        Edge->SetActorLocation(Midpoint);
+
+        // Calculate rotation from A to B in 3D — this handles slope naturally
+        FVector Direction = (PosB - PosA).GetSafeNormal();
+        FRotator NewRotation = Direction.Rotation();
+        Edge->SetActorRotation(NewRotation);
+    }
+    
+    // Snap Hex Tiles
+
+    for (auto Element : HexTiles)
+    {
+        if (!Element) continue;
+        FVector Start = Element->GetActorLocation() + FVector(0, 0, 500.f);
+        FVector End = Element->GetActorLocation() - FVector(0, 0, 500.f);
+
+        FHitResult Hit;
+        FCollisionQueryParams Params;
+        Params.AddIgnoredActor(Element);
+
+        if (GetWorld()->LineTraceSingleByChannel(Hit, Start, End, ECC_Visibility, Params))
+        {
+            FVector NewLoc = Element->GetActorLocation();
+            NewLoc.Z = Hit.ImpactPoint.Z + 2.f; // slight offset so it sits on top
+            Element->SetActorLocation(NewLoc);
+        }
+        // For vertices
+        if (GetWorld()->LineTraceSingleByChannel(Hit, Start, End, ECC_Visibility, Params))
+        {
+            FVector NewLoc = Element->GetActorLocation();
+            NewLoc.Z = Hit.ImpactPoint.Z + 2.f;
+            Element->SetActorLocation(NewLoc);
+    
+            // Align to slope
+            Element->SetActorRotation(
+                GetRotationFromSurfaceNormal(Hit.ImpactNormal, Element->GetActorRotation())
+            );
+        }
+    }
+}
+
+void ABoardManager::ComputeSmoothedElevations()
+{
+    // Standard 6 axial neighbours
+    static const TArray<TPair<int32,int32>> AxialNeighbours = {
+        {1,0},{-1,0},{0,1},{0,-1},{1,-1},{-1,1}
+    };
+
+    // Build a quick lookup map so neighbour search is O(1)
+    TMap<TPair<int32,int32>, AHexTile*> CoordMap;
+    for (AHexTile* Tile : HexTiles)
+    {
+        if (Tile) CoordMap.Add({Tile->Q, Tile->R}, Tile);
+    }
+
+    // Run 2 smoothing iterations for natural slopes
+    for (int32 Pass = 0; Pass < 2; Pass++)
+    {
+        // Temp array so we don't read values we've already written this pass
+        TMap<AHexTile*, float> NewElevations;
+
+        for (AHexTile* Tile : HexTiles)
+        {
+            if (!Tile) continue;
+
+            float Sum = Tile->BaseElevation * 2.0f; // center gets more weight
+            float WeightSum = 2.0f;
+
+            for (auto& Offset : AxialNeighbours)
+            {
+                TPair<int32,int32> NeighbourCoord = {Tile->Q + Offset.Key, Tile->R + Offset.Value};
+                if (AHexTile** Neighbour = CoordMap.Find(NeighbourCoord))
+                {
+                    Sum += (*Neighbour)->BaseElevation;
+                    WeightSum += 1.f;
+                }
+            }
+            NewElevations.Add(Tile, Sum / WeightSum);
+        }
+
+        // Write smoothed values to a temporary field, never overwrite BaseElevation
+        for (AHexTile* Tile : HexTiles)
+        {
+            if (!Tile) continue;
+            if (Pass == 0)
+                Tile->SmoothedElevation = NewElevations[Tile];
+            else
+                Tile->SmoothedElevation = NewElevations[Tile];
+        }
+    }
+    for (AHexTile* Tile : HexTiles)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Hex (%d,%d) Base: %f Smoothed: %f"), 
+            Tile->Q, Tile->R, Tile->BaseElevation, Tile->SmoothedElevation);
+    }
 }
 
 AHexTile* ABoardManager::GetHexTile(EHexType HexType)

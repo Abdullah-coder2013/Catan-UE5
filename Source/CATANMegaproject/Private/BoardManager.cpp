@@ -481,57 +481,47 @@ void ABoardManager::SnapActorsToTerrain()
 
 void ABoardManager::ComputeSmoothedElevations()
 {
-    // Standard 6 axial neighbours
     static const TArray<TPair<int32,int32>> AxialNeighbours = {
         {1,0},{-1,0},{0,1},{0,-1},{1,-1},{-1,1}
     };
 
-    // Build a quick lookup map so neighbour search is O(1)
     TMap<TPair<int32,int32>, AHexTile*> CoordMap;
     for (AHexTile* Tile : HexTiles)
-    {
         if (Tile) CoordMap.Add({Tile->Q, Tile->R}, Tile);
-    }
 
-    // Run 2 smoothing iterations for natural slopes
+    // Seed SmoothedElevation from BaseElevation before any pass
+    for (AHexTile* Tile : HexTiles)
+        if (Tile) Tile->SmoothedElevation = Tile->BaseElevation;
+
     for (int32 Pass = 0; Pass < 2; Pass++)
     {
-        // Temp array so we don't read values we've already written this pass
         TMap<AHexTile*, float> NewElevations;
 
         for (AHexTile* Tile : HexTiles)
         {
             if (!Tile) continue;
 
-            float Sum = Tile->BaseElevation * 2.0f; // center gets more weight
-            float WeightSum = 2.0f;
+            // Strong center weight preserves original elevation dominance
+            float Sum       = Tile->SmoothedElevation * 8.0f;
+            float WeightSum = 8.0f;
 
             for (auto& Offset : AxialNeighbours)
             {
-                TPair<int32,int32> NeighbourCoord = {Tile->Q + Offset.Key, Tile->R + Offset.Value};
-                if (AHexTile** Neighbour = CoordMap.Find(NeighbourCoord))
+                TPair<int32,int32> Coord = {Tile->Q + Offset.Key, Tile->R + Offset.Value};
+                if (AHexTile** Neighbour = CoordMap.Find(Coord))
                 {
-                    Sum += (*Neighbour)->BaseElevation;
+                    Sum       += (*Neighbour)->SmoothedElevation;
                     WeightSum += 1.f;
                 }
             }
-            NewElevations.Add(Tile, Sum / WeightSum);
+            // Gentle blend — preserves most of the original elevation
+            float Smoothed = Sum / WeightSum;
+            NewElevations.Add(Tile, FMath::Lerp(Tile->SmoothedElevation, Smoothed, 0.2f));
         }
 
-        // Write smoothed values to a temporary field, never overwrite BaseElevation
+        // Write back so the next pass picks up this pass's results
         for (AHexTile* Tile : HexTiles)
-        {
-            if (!Tile) continue;
-            if (Pass == 0)
-                Tile->SmoothedElevation = NewElevations[Tile];
-            else
-                Tile->SmoothedElevation = NewElevations[Tile];
-        }
-    }
-    for (AHexTile* Tile : HexTiles)
-    {
-        UE_LOG(LogTemp, Warning, TEXT("Hex (%d,%d) Base: %f Smoothed: %f"), 
-            Tile->Q, Tile->R, Tile->BaseElevation, Tile->SmoothedElevation);
+            if (Tile) Tile->SmoothedElevation = NewElevations[Tile];
     }
 }
 

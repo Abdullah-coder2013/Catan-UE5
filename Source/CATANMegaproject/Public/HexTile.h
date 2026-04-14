@@ -71,7 +71,7 @@ public:
 		case EHexType::Pasture:  return 0.3f;
 		case EHexType::Hill:     return 0.6f;
 		case EHexType::Forest:   return 0.4f;
-		case EHexType::Mountain: return 1.0f;
+		case EHexType::Mountain: return 4.0f;
 		default:                 return 0.2f;
 		}
 	}

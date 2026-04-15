@@ -10,7 +10,7 @@ public class CATANMegaproject : ModuleRules
 
 		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "EnhancedInput", "UMG", "RenderCore", "ProceduralMeshComponent" });
 
-		PrivateDependencyModuleNames.AddRange(new string[] { "SlateCore" });
+		PrivateDependencyModuleNames.AddRange(new string[] { "SlateCore", "TraceInsights", "Landscape" });
 
 		// Uncomment if you are using Slate UI
 		// PrivateDependencyModuleNames.AddRange(new string[] { "Slate", "SlateCore" });

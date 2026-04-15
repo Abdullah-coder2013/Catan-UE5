@@ -395,8 +395,8 @@ void ABoardManager::SnapActorsToTerrain()
         AHexVertex* Vertex = Pair.Value;
         if (!Vertex) continue;
 
-        FVector Start = Vertex->GetActorLocation() + FVector(0, 0, 500.f);
-        FVector End = Vertex->GetActorLocation() - FVector(0, 0, 500.f);
+        FVector Start = Vertex->GetActorLocation() + FVector(0, 0, 5000.f);
+        FVector End = Vertex->GetActorLocation() - FVector(0, 0, 5000.f);
 
         FHitResult Hit;
         FCollisionQueryParams Params;
@@ -451,8 +451,8 @@ void ABoardManager::SnapActorsToTerrain()
     for (auto Element : HexTiles)
     {
         if (!Element) continue;
-        FVector Start = Element->GetActorLocation() + FVector(0, 0, 500.f);
-        FVector End = Element->GetActorLocation() - FVector(0, 0, 500.f);
+        FVector Start = Element->GetActorLocation() + FVector(0, 0, 5000.f);
+        FVector End = Element->GetActorLocation() - FVector(0, 0, 5000.f);
 
         FHitResult Hit;
         FCollisionQueryParams Params;

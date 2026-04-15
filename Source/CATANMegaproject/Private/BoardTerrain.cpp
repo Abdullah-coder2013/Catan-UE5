@@ -170,6 +170,7 @@ void ABoardTerrain::GenerateTerrain(const TArray<AHexTile*>& HexTiles, float Hex
 
         HexData.Add(Data);
     }
+    
     ParallelFor(NumVerts, [&](int32 Index)
         {
                     int32 Col = Index % NumCols;
@@ -288,6 +289,10 @@ void ABoardTerrain::GenerateTerrain(const TArray<AHexTile*>& HexTiles, float Hex
                     // Elevation += Detail * DetailAmp * NoiseMask;
 
             Vertices[Index] = FVector(WorldX, WorldY, Elevation);
+        UVs.Add(FVector2D(
+    Col / (float)(NumCols - 1),
+    Row / (float)(NumRows - 1)
+));
         });
 
 

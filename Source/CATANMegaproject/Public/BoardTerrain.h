@@ -46,7 +46,7 @@ public:
 
 	UPROPERTY(EditAnywhere, Category = "Terrain")
 	float BorderPadding = 200.f; // extra cm beyond the board edge
-	
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Terrain|Biome")
 	float MountainHeight = 1.25f;
 
@@ -55,13 +55,13 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Terrain|Biome")
 	float ForestHeight = 0.25f;
-	
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Terrain|Biome")
 	float PastureHeight = 0.18f;
-	
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Terrain|Biome")
 	float HillHeight = 0.4f;
-	
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Terrain|Biome")
 	float DesertHeight = 0.08f;
 
@@ -72,4 +72,11 @@ public:
 	float TerrainShapeWeight = 0.1f;
 
 	void GenerateTerrain(const TArray<AHexTile*>& HexTiles, float HexSize);
+
+	struct FHexData
+	{
+		FVector2D Pos;
+		float Height;
+		float Amp;
+	};
 };

@@ -78,6 +78,7 @@ ABoardTerrain::ABoardTerrain()
 
 void ABoardTerrain::GenerateTerrain(const TArray<AHexTile*>& HexTiles, float HexSize)
 {
+    const float WorldScale = 10.f;
     TMap<TPair<int32,int32>, AHexTile*> CoordMap;
     for (AHexTile* Tile : HexTiles)
         if (Tile) CoordMap.Add({Tile->Q, Tile->R}, Tile);
@@ -95,6 +96,8 @@ void ABoardTerrain::GenerateTerrain(const TArray<AHexTile*>& HexTiles, float Hex
     }
     WorldMin.X -= BorderPadding; WorldMin.Y -= BorderPadding;
     WorldMax.X += BorderPadding; WorldMax.Y += BorderPadding;
+
+    Resolution = Resolution * (WorldScale/4);
 
     float GlobalElevMin = FLT_MAX, GlobalElevMax = -FLT_MAX;
     for (AHexTile* Tile : HexTiles)
@@ -149,146 +152,147 @@ void ABoardTerrain::GenerateTerrain(const TArray<AHexTile*>& HexTiles, float Hex
             default:                 return 0.3f;
         }
     };
+    int32 NumVerts = NumCols * NumRows;
+    Vertices.SetNum(NumVerts);
+    UVs.SetNum(NumVerts);
 
-    // ----------------------------------------------------
-    // MAIN LOOP
-    // ----------------------------------------------------
-    for (int32 Row = 0; Row < NumRows; Row++)
+    TArray<FHexData> HexData;
+    HexData.Reserve(HexTiles.Num());
+
+    for (AHexTile* Tile : HexTiles)
     {
-        for (int32 Col = 0; Col < NumCols; Col++)
-        {
-            float WorldX = WorldMin.X + Col * Resolution;
-            float WorldY = WorldMin.Y + Row * Resolution;
+        if (!Tile) continue;
 
-            float MinDist = FLT_MAX;
-            float TotalWeight = 1e-6f;
+        FHexData Data;
+        Data.Pos = FVector2D(Tile->GetActorLocation().X, Tile->GetActorLocation().Y);
+        Data.Height = GetBiomeBaseHeight(Tile->HexType);
+        Data.Amp = GetTileAmplitude(Tile->HexType);
 
-            float BiomeHeight = 0.f;
-            float BiomeAmp = 0.f;
-
-            // ------------------------------------------------
-            // HEX BLENDING
-            // ------------------------------------------------
-            for (AHexTile* Tile : HexTiles)
-            {
-                if (!Tile) continue;
-
-                float Dist = FVector2D::Distance(
-                    FVector2D(WorldX, WorldY),
-                    FVector2D(Tile->GetActorLocation().X, Tile->GetActorLocation().Y));
-
-                MinDist = FMath::Min(MinDist, Dist);
-                if (Dist > BlendRadius) continue;
-
-                float Norm = Dist / BlendRadius;
-                float Weight = FMath::Exp(-4.f * Norm * Norm);
-
-                BiomeHeight += GetBiomeBaseHeight(Tile->HexType) * Weight;
-                BiomeAmp    += GetTileAmplitude(Tile->HexType) * Weight;
-
-                TotalWeight += Weight;
-            }
-
-            BiomeHeight /= TotalWeight;
-            BiomeAmp    /= TotalWeight;
-
-            // ====================================================
-            // 1. DOMAIN WARPING (world shape)
-            // ====================================================
-            const float WarpScale = 0.0025f;
-            const float WarpStrength = 120.f;
-
-            float WarpX = FBMNoise(WorldX * WarpScale, WorldY * WarpScale, 2, 0.5f, 2.0f);
-            float WarpY = FBMNoise(WorldX * WarpScale + 100.f, WorldY * WarpScale + 100.f, 2, 0.5f, 2.0f);
-
-            float WX = WorldX + WarpX * WarpStrength;
-            float WY = WorldY + WarpY * WarpStrength;
-
-            // ====================================================
-            // 2. CONTINENTAL SHAPE (land masses)
-            // ====================================================
-            float Continental = FBMNoise(WX * 0.0015f, WY * 0.0015f, 3, 0.5f, 2.0f);
-            Continental = FMath::Pow(FMath::Clamp(Continental * 0.5f + 0.5f, 0.f, 1.f), 1.3f);
-
-            // ====================================================
-            // 3. REAL MOUNTAIN RANGES (ridge system)
-            // ====================================================
-            float RidgeNoise = FBMNoise(WX * 0.0008f, WY * 0.0008f, 3, 0.5f, 2.0f);
-            float Angle = RidgeNoise * 6.28318f;
-
-            FVector2D FlowDir(FMath::Cos(Angle), FMath::Sin(Angle));
-
-            float RidgeField = 0.f;
-            for (int i = 0; i < 4; i++)
-            {
-                float PX = WX + FlowDir.X * i * 140.f;
-                float PY = WY + FlowDir.Y * i * 140.f;
-
-                RidgeField += FBMNoise(PX * 0.002f, PY * 0.002f, 2, 0.5f, 2.0f);
-            }
-
-            float MountainRanges = 1.f - FMath::Abs(RidgeField);
-            MountainRanges = FMath::Pow(MountainRanges, 3.0f);
-
-            MountainRanges *= Continental; // only on land
-
-            // ====================================================
-            // 4. BIOME BASE HEIGHT
-            // ====================================================
-            float BaseHeight =
-                BiomeHeight * 0.6f +
-                Continental * 0.2f +
-                MountainRanges * 0.4f;
-
-            // ====================================================
-            // 5. SCALE (clean separation)
-            // ====================================================
-            float HeightScale = ElevationScale;
-            float Elevation = BaseHeight * HeightScale;
-
-            // ====================================================
-            // 6. GLACIER EDGE FALLOFF (no cliffs)
-            // ====================================================
-            float EdgeDist = MinDist - EdgeStart;
-            float EdgeMask = FMath::Clamp(EdgeDist / EdgeFade, 0.f, 1.f);
-            EdgeMask = FMath::Pow(EdgeMask, 2.2f);
-
-            Elevation *= (1.f - EdgeMask * 0.85f);
-
-            // ====================================================
-            // 7. DETAIL NOISE (safe, non-breaking)
-            // ====================================================
-            float Detail = FBMNoise(
-                WX * NoiseScale,
-                WY * NoiseScale,
-                4,
-                0.5f,
-                2.0f
-            );
-
-            float DetailAmp = BiomeAmp * HeightScale * 0.12f;
-
-            float DistFromBorder = HexInnerRadius - MinDist;
-            float NoiseMask = FMath::SmoothStep(0.f, 1.f,
-                FMath::Clamp(DistFromBorder / (HexInnerRadius * 0.4f), 0.f, 1.f));
-
-            Elevation += Detail * DetailAmp * NoiseMask;
-
-            // ====================================================
-            // OUTPUT
-            // ====================================================
-            Vertices.Add(FVector(WorldX, WorldY, Elevation));
-
-            UVs.Add(FVector2D(
-                (WorldX - WorldMin.X) / (WorldMax.X - WorldMin.X),
-                (WorldY - WorldMin.Y) / (WorldMax.Y - WorldMin.Y)));
-
-            VertexColors.Add(FColor::White);
-        }
+        HexData.Add(Data);
     }
+    ParallelFor(NumVerts, [&](int32 Index)
+        {
+                    int32 Col = Index % NumCols;
+                    int32 Row = Index / NumCols;
+
+                    float WorldX = WorldMin.X + Col * Resolution;
+                    float WorldY = WorldMin.Y + Row * Resolution;
+
+                    float MinDist = FLT_MAX;
+                    float TotalWeight = 1e-6f;
+
+                    float BiomeHeight = 0.f;
+                    float BiomeAmp = 0.f;
+
+                    FVector2D P(WorldX, WorldY);
+
+                    for (const FHexData& Tile : HexData)
+                    {
+                        float Dist = FVector2D::Distance(P, Tile.Pos);
+
+                        MinDist = FMath::Min(MinDist, Dist);
+                        if (Dist > BlendRadius) continue;
+
+                        float Norm = Dist / BlendRadius;
+                        float Weight = FMath::Exp(-4.f * Norm * Norm);
+
+                        BiomeHeight += Tile.Height * Weight;
+                        BiomeAmp    += Tile.Amp * Weight;
+
+                        TotalWeight += Weight;
+                    }
+
+                    BiomeHeight /= TotalWeight;
+                    BiomeAmp /= TotalWeight;
+
+                    // ====================================================
+                    // 1. DOMAIN WARPING (world shape)
+                    // ====================================================
+                    const float WarpScale = 0.0025f;
+                    const float WarpStrength = 120.f;
+
+                    float WarpX = FBMNoise(WorldX * WarpScale, WorldY * WarpScale, 2, 0.5f, 2.0f);
+                    float WarpY = FBMNoise(WorldX * WarpScale + 100.f, WorldY * WarpScale + 100.f, 2, 0.5f, 2.0f);
+
+                    float WX = WorldX + WarpX * WarpStrength;
+                    float WY = WorldY + WarpY * WarpStrength;
+
+                    // ====================================================
+                    // 2. CONTINENTAL SHAPE (land masses)
+                    // ====================================================
+                    float Continental = FBMNoise(WX * 0.0015f, WY * 0.0015f, 1.5f, 0.5f, 2.0f);
+                    Continental = FMath::Pow(FMath::Clamp(Continental * 0.5f + 0.5f, 0.f, 1.f), 1.3f);
+
+                    // ====================================================
+                    // 3. REAL MOUNTAIN RANGES (ridge system)
+                    // ====================================================
+                    float RidgeNoise = FBMNoise(WX * 0.0008f, WY * 0.0008f, 3, 0.5f, 2.0f);
+                    float Angle = RidgeNoise * 6.28318f;
+
+                    FVector2D FlowDir(FMath::Cos(Angle), FMath::Sin(Angle));
+
+                    float RidgeField = 0.f;
+                    for (int i = 0; i < 4; i++)
+                    {
+                        float PX = WX + FlowDir.X * i * 140.f;
+                        float PY = WY + FlowDir.Y * i * 140.f;
+
+                        RidgeField += FBMNoise(PX * 0.002f, PY * 0.002f, 2, 0.5f, 2.0f);
+                    }
+                    float MountainRanges = 1.0f - FMath::Abs(RidgeField / 4.f);
+                    MountainRanges = FMath::Pow(MountainRanges, 4.5f);
+                    MountainRanges *= 0.6f;
+
+                    MountainRanges *= Continental; // only on land
+
+                    // ====================================================
+                    // 4. BIOME BASE HEIGHT
+                    // ====================================================
+                    float BaseHeight =
+                        BiomeHeight * 0.6f +
+                        Continental * 0.2f +
+                        MountainRanges * 0.4f;
+
+                    // ====================================================
+                    // 5. SCALE (clean separation)
+                    // ====================================================
+                    float HeightScale = ElevationScale;
+                    float Elevation = BaseHeight * HeightScale;
+
+                    // ====================================================
+                    // 6. GLACIER EDGE FALLOFF (no cliffs)
+                    // ====================================================
+                    float EdgeDist = MinDist - EdgeStart;
+                    float EdgeMask = FMath::Clamp(EdgeDist / EdgeFade, 0.f, 1.f);
+                    EdgeMask = FMath::Pow(EdgeMask, 2.2f);
+
+                    Elevation *= (1.f - EdgeMask * 0.85f);
+
+                    // ====================================================
+                    // 7. DETAIL NOISE (safe, non-breaking)
+                    // ====================================================
+                    float Detail = FBMNoise(
+                        WX * NoiseScale,
+                        WY * NoiseScale,
+                        4,
+                        0.5f,
+                        2.0f
+                    );
+
+                    float DetailAmp = BiomeAmp * HeightScale * 0.12f;
+
+                    float DistFromBorder = HexInnerRadius - MinDist;
+                    float NoiseMask = FMath::SmoothStep(0.f, 1.f,
+                        FMath::Clamp(DistFromBorder / (HexInnerRadius * 0.4f), 0.f, 1.f));
+
+                    // Elevation += Detail * DetailAmp * NoiseMask;
+
+            Vertices[Index] = FVector(WorldX, WorldY, Elevation);
+        });
+
 
     // ----------------------------------------------------
-    // MESH BUILD (unchanged)
+    // MESH BUILD
     // ----------------------------------------------------
     for (int32 Row = 0; Row < NumRows - 1; Row++)
     {

@@ -1,5 +1,11 @@
 #include "BoardTerrain.h"
+
+#include "CatanPCGSettings.h"
 #include "HexTile.h"
+#include "PCGComponent.h"
+#include "PCGGraph.h"
+#include "Data/PCGPointData.h"
+#include "PCGContext.h"
 #include "KismetProceduralMeshLibrary.h"
 
 // ---------------------------------------------------------------------------
@@ -74,6 +80,33 @@ ABoardTerrain::ABoardTerrain()
     PrimaryActorTick.bCanEverTick = false;
     TerrainMesh = CreateDefaultSubobject<UProceduralMeshComponent>(TEXT("TerrainMesh"));
     RootComponent = TerrainMesh;
+    PCGComponent = CreateDefaultSubobject<UPCGComponent>(TEXT("PCGComponent"));
+}
+
+
+void ABoardTerrain::TriggerPCG(const TArray<AHexTile*>& HexTiles)
+{
+    if (!PCGComponent) return;
+
+    // Find the HexInput node settings inside the PCG graph
+    UPCGGraph* Graph = PCGComponent->GetGraph();
+    if (!Graph) return;
+
+    for (UPCGNode* Node : Graph->GetNodes())
+    {
+        UCatanPCGSettingsSettings* HexSettings =
+            Cast<UCatanPCGSettingsSettings>(Node->GetSettings());
+
+        if (HexSettings)
+        {
+            // Inject your hex tiles directly into the node settings
+            HexSettings->HexTiles = HexTiles;
+            break;
+        }
+    }
+
+    // Now safe to generate — node has the data it needs
+    PCGComponent->Generate();
 }
 
 void ABoardTerrain::GenerateTerrain(const TArray<AHexTile*>& HexTiles, float HexSize)
@@ -289,11 +322,11 @@ void ABoardTerrain::GenerateTerrain(const TArray<AHexTile*>& HexTiles, float Hex
                     // Elevation += Detail * DetailAmp * NoiseMask;
 
             Vertices[Index] = FVector(WorldX, WorldY, Elevation);
-        UVs.Add(FVector2D(
-    Col / (float)(NumCols - 1),
-    Row / (float)(NumRows - 1)
-));
-        });
+        UVs[Index] = FVector2D(
+        Col / (float)(NumCols - 1),
+        Row / (float)(NumRows - 1)
+    );
+    });
 
 
     // ----------------------------------------------------
@@ -322,4 +355,8 @@ void ABoardTerrain::GenerateTerrain(const TArray<AHexTile*>& HexTiles, float Hex
     TerrainMesh->CreateMeshSection(
         0, Vertices, Triangles, Normals, UVs,
         VertexColors, Tangents, true);
+    TerrainMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+    TerrainMesh->bUseComplexAsSimpleCollision = true;
+    TerrainMesh->SetCollisionObjectType(ECollisionChannel::ECC_WorldStatic);
+    TriggerPCG(HexTiles);
 }

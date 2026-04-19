@@ -6,6 +6,8 @@
 #include "ProceduralMeshComponent.h"
 #include "BoardTerrain.generated.h"
 
+class UPCGComponent;
+
 UCLASS()
 class CATANMEGAPROJECT_API ABoardTerrain : public AActor
 {
@@ -16,6 +18,10 @@ public:
 
 	UPROPERTY(VisibleAnywhere)
 	UProceduralMeshComponent* TerrainMesh;
+	
+	// In BoardTerrain.h, add:
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PCG")
+	UPCGComponent* PCGComponent;
 
 	UPROPERTY(EditAnywhere, Category = "Terrain")
 	float Resolution = 50.f; // vertex spacing in cm
@@ -72,6 +78,8 @@ public:
 	float TerrainShapeWeight = 0.1f;
 
 	void GenerateTerrain(const TArray<AHexTile*>& HexTiles, float HexSize);
+	
+	void TriggerPCG(const TArray<AHexTile*>& HexTiles);
 
 	struct FHexData
 	{

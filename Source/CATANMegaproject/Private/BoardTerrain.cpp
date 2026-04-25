@@ -7,6 +7,8 @@
 #include "Data/PCGPointData.h"
 #include "PCGContext.h"
 #include "KismetProceduralMeshLibrary.h"
+#include "Engine/Texture2D.h"
+#include "Materials/MaterialInstanceDynamic.h"
 
 // ---------------------------------------------------------------------------
 // Simple 2-D Perlin noise (value-noise variant with smoothstep interpolation)
@@ -431,10 +433,140 @@ void ABoardTerrain::GenerateTerrain(const TArray<AHexTile*>& HexTiles, float Hex
     UV3s,
     VertexColors, Tangents, true
 );
+
+    // ----------------------------------------------------
+    // BIOME TEXTURE BAKE (high-res RGBA for sharp borders)
+    // ----------------------------------------------------
+    {
+        int32 TexSize = BiomeTextureResolution;
+
+        BiomeTexture = UTexture2D::CreateTransient(TexSize, TexSize, PF_B8G8R8A8);
+        BiomeTexture2 = UTexture2D::CreateTransient(TexSize, TexSize, PF_B8G8R8A8);
+
+        if (BiomeTexture)
+        {
+            BiomeTexture->MipGenSettings = TMGS_NoMipmaps;
+            BiomeTexture->SRGB = false;
+        }
+        if (BiomeTexture2)
+        {
+            BiomeTexture2->MipGenSettings = TMGS_NoMipmaps;
+            BiomeTexture2->SRGB = false;
+        }
+
+        FTexture2DMipMap& Mip1 = BiomeTexture->GetPlatformData()->Mips[0];
+        FTexture2DMipMap& Mip2 = BiomeTexture2->GetPlatformData()->Mips[0];
+        void* Data1 = Mip1.BulkData.Lock(LOCK_READ_WRITE);
+        void* Data2 = Mip2.BulkData.Lock(LOCK_READ_WRITE);
+        FColor* Pixels1 = static_cast<FColor*>(Data1);
+        FColor* Pixels2 = static_cast<FColor*>(Data2);
+
+        float WorldW = WorldMax.X - WorldMin.X;
+        float WorldH = WorldMax.Y - WorldMin.Y;
+
+        ParallelFor(TexSize * TexSize, [&](int32 Idx)
+        {
+            int32 PX = Idx % TexSize;
+            int32 PY = Idx / TexSize;
+
+            float U = PX / (float)(TexSize - 1);
+            float V = PY / (float)(TexSize - 1);
+
+            float WX = WorldMin.X + U * WorldW;
+            float WY = WorldMin.Y + V * WorldH;
+
+            FVector2D P(WX, WY);
+
+            float ClosestDist = FLT_MAX;
+            float SecondDist = FLT_MAX;
+            const FHexData* ClosestHex = nullptr;
+            const FHexData* SecondHex = nullptr;
+
+            for (const FHexData& Tile : HexData)
+            {
+                float Dist = FVector2D::Distance(P, Tile.Pos);
+                if (Dist < ClosestDist)
+                {
+                    SecondDist = ClosestDist;
+                    SecondHex = ClosestHex;
+                    ClosestDist = Dist;
+                    ClosestHex = &Tile;
+                }
+                else if (Dist < SecondDist)
+                {
+                    SecondDist = Dist;
+                    SecondHex = &Tile;
+                }
+            }
+
+            float BorderDist = SecondDist - ClosestDist;
+            float BlendT = FMath::Clamp((BorderDist + TransitionWidth) / (2.f * TransitionWidth), 0.f, 1.f);
+            BlendT = SmoothStep(BlendT);
+
+            float Forest = 0.f, Desert = 0.f, Hill = 0.f, Mountain = 0.f;
+            float Pasture = 0.f, Fields = 0.f;
+
+            auto AssignWeight = [&](EHexType Type, float W)
+            {
+                switch (Type)
+                {
+                    case EHexType::Forest:   Forest += W; break;
+                    case EHexType::Desert:   Desert += W; break;
+                    case EHexType::Hill:     Hill += W; break;
+                    case EHexType::Mountain: Mountain += W; break;
+                    case EHexType::Pasture:  Pasture += W; break;
+                    case EHexType::Fields:   Fields += W; break;
+                    default: break;
+                }
+            };
+
+            AssignWeight(ClosestHex->Type, BlendT);
+            if (SecondHex && BlendT < 1.f)
+                AssignWeight(SecondHex->Type, 1.f - BlendT);
+
+            float Sum = Forest + Desert + Hill + Mountain + Pasture + Fields + 1e-6f;
+            Forest   /= Sum;
+            Desert   /= Sum;
+            Hill     /= Sum;
+            Mountain /= Sum;
+            Pasture  /= Sum;
+            Fields   /= Sum;
+
+            float BeachMask = FMath::Clamp((ClosestDist - EdgeStart) / EdgeFade, 0.f, 1.f);
+            float RoadMask = FMath::Clamp(1.f - BorderDist / RoadWidth, 0.f, 1.f);
+
+            Pixels1[Idx] = FColor(
+                (uint8)(FMath::Clamp(Forest,   0.f, 1.f) * 255),
+                (uint8)(FMath::Clamp(Desert,   0.f, 1.f) * 255),
+                (uint8)(FMath::Clamp(Hill,     0.f, 1.f) * 255),
+                (uint8)(FMath::Clamp(Mountain, 0.f, 1.f) * 255)
+            );
+
+            Pixels2[Idx] = FColor(
+                (uint8)(FMath::Clamp(Pasture,   0.f, 1.f) * 255),
+                (uint8)(FMath::Clamp(Fields,    0.f, 1.f) * 255),
+                (uint8)(FMath::Clamp(BeachMask, 0.f, 1.f) * 255),
+                (uint8)(FMath::Clamp(RoadMask,  0.f, 1.f) * 255)
+            );
+        });
+
+        Mip1.BulkData.Unlock();
+        Mip2.BulkData.Unlock();
+        BiomeTexture->UpdateResource();
+        BiomeTexture2->UpdateResource();
+    }
     
     if (TerrainMaterial)
     {
-        TerrainMesh->SetMaterial(0, TerrainMaterial);
+        UMaterialInstanceDynamic* DynMat = UMaterialInstanceDynamic::Create(TerrainMaterial, this);
+        if (DynMat)
+        {
+            if (BiomeTexture)
+                DynMat->SetTextureParameterValue(FName("BiomeTexture"), BiomeTexture);
+            if (BiomeTexture2)
+                DynMat->SetTextureParameterValue(FName("BiomeTexture2"), BiomeTexture2);
+        }
+        TerrainMesh->SetMaterial(0, DynMat ? DynMat : TerrainMaterial);
     }
     TerrainMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
     TerrainMesh->bUseComplexAsSimpleCollision = true;

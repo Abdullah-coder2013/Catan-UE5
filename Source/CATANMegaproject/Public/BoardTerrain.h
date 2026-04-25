@@ -22,12 +22,20 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Terrain")
 	UMaterialInterface* TerrainMaterial;
 	
-	// In BoardTerrain.h, add:
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Terrain|Texture")
+	UTexture2D* BiomeTexture;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Terrain|Texture")
+	UTexture2D* BiomeTexture2;
+
+	UPROPERTY(EditAnywhere, Category = "Terrain|Texture", meta = (ClampMin = "256", ClampMax = "8192"))
+	int32 BiomeTextureResolution = 4096;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PCG")
 	UPCGComponent* PCGComponent;
 
 	UPROPERTY(EditAnywhere, Category = "Terrain")
-	float Resolution = 50.f; // vertex spacing in cm
+	float Resolution = 50.f;
 
 	UPROPERTY(EditAnywhere, Category = "Terrain")
 	float ElevationScale = 80.f;
@@ -57,7 +65,7 @@ public:
 	float DesertDetailAmplitude = 0.2f;
 
 	UPROPERTY(EditAnywhere, Category = "Terrain")
-	float BorderPadding = 200.f; // extra cm beyond the board edge
+	float BorderPadding = 200.f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Terrain|Biome")
 	float MountainHeight = 1.25f;
@@ -77,10 +85,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Terrain|Biome")
 	float DesertHeight = 0.08f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Terrain|Noise")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Terrain|Noise")
 	float ContinentalWeight = 0.2f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Terrain|Noise")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Terrain|Noise")
 	float TerrainShapeWeight = 0.1f;
 
 	void GenerateTerrain(const TArray<AHexTile*>& HexTiles, float HexSize);

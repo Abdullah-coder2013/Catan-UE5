@@ -111,7 +111,7 @@ void ABoardTerrain::TriggerPCG(const TArray<AHexTile*>& HexTiles)
 
 void ABoardTerrain::GenerateTerrain(const TArray<AHexTile*>& HexTiles, float HexSize)
 {
-    const float WorldScale = 10.f;
+    const float WorldScale = 100.f;
     TMap<TPair<int32,int32>, AHexTile*> CoordMap;
     for (AHexTile* Tile : HexTiles)
         if (Tile) CoordMap.Add({Tile->Q, Tile->R}, Tile);
@@ -148,9 +148,13 @@ void ABoardTerrain::GenerateTerrain(const TArray<AHexTile*>& HexTiles, float Hex
     TArray<FVector>   Vertices;
     TArray<int32>     Triangles;
     TArray<FVector2D> UVs;
+    TArray<FVector2D> UV3s;
+    TArray<FVector2D> UV2s;
     TArray<FColor>    VertexColors;
 
-    const float BlendRadius    = HexSize * 4.0f;
+    const float TransitionWidth = HexSize * 0.08f;
+    const float BlendRadius     = HexSize * 4.0f;
+    const float RoadWidth       = HexSize * RoadWidthGlobal;
     const float EdgeStart      = HexSize * 0.95f;
     const float EdgeFade       = HexSize * 0.8f;
     const float HexInnerRadius = HexSize * FMath::Sqrt(3.f) / 2.f;
@@ -185,9 +189,27 @@ void ABoardTerrain::GenerateTerrain(const TArray<AHexTile*>& HexTiles, float Hex
             default:                 return 0.3f;
         }
     };
+    auto BiomeToFloat = [](EHexType Type) -> float
+    {
+        switch (Type)
+        {
+        case EHexType::Water:    return 0.0f;
+        case EHexType::Desert:   return 0.166f;
+        case EHexType::Fields:   return 0.333f;
+        case EHexType::Pasture:  return 0.5f;
+        case EHexType::Forest:   return 0.666f;
+        case EHexType::Hill:     return 0.833f;
+        case EHexType::Mountain: return 1.0f;
+        default:                 return 0.0f;
+        }
+    };
     int32 NumVerts = NumCols * NumRows;
     Vertices.SetNum(NumVerts);
     UVs.SetNum(NumVerts);
+    UV3s.SetNum(NumVerts);
+    UV3s.Init(FVector2D(0.5f, 0.f), NumVerts);
+    UV2s.SetNum(NumVerts);
+    VertexColors.SetNum(NumVerts);
 
     TArray<FHexData> HexData;
     HexData.Reserve(HexTiles.Num());
@@ -200,7 +222,8 @@ void ABoardTerrain::GenerateTerrain(const TArray<AHexTile*>& HexTiles, float Hex
         Data.Pos = FVector2D(Tile->GetActorLocation().X, Tile->GetActorLocation().Y);
         Data.Height = GetBiomeBaseHeight(Tile->HexType);
         Data.Amp = GetTileAmplitude(Tile->HexType);
-
+        Data.Type = Tile->HexType;
+        Data.BiomeFloat = BiomeToFloat(Tile->HexType);
         HexData.Add(Data);
     }
     
@@ -213,31 +236,93 @@ void ABoardTerrain::GenerateTerrain(const TArray<AHexTile*>& HexTiles, float Hex
                     float WorldY = WorldMin.Y + Row * Resolution;
 
                     float MinDist = FLT_MAX;
-                    float TotalWeight = 1e-6f;
 
-                    float BiomeHeight = 0.f;
-                    float BiomeAmp = 0.f;
+                    float SmoothBiomeHeight = 0.f;
+                    float SmoothBiomeAmp = 0.f;
+                    float SmoothTotalWeight = 1e-6f;
+
+                    float Forest = 0.f;
+                    float Desert = 0.f;
+                    float Pasture = 0.f;
+                    float Fields = 0.f;
+                    float Hill = 0.f;
+                    float Mountain = 0.f;
 
                     FVector2D P(WorldX, WorldY);
+
+                    float ClosestDist = FLT_MAX;
+                    float SecondDist = FLT_MAX;
+                    const FHexData* ClosestHex = nullptr;
+                    const FHexData* SecondHex = nullptr;
 
                     for (const FHexData& Tile : HexData)
                     {
                         float Dist = FVector2D::Distance(P, Tile.Pos);
-
                         MinDist = FMath::Min(MinDist, Dist);
+
+                        if (Dist < ClosestDist)
+                        {
+                            SecondDist = ClosestDist;
+                            SecondHex = ClosestHex;
+                            ClosestDist = Dist;
+                            ClosestHex = &Tile;
+                        }
+                        else if (Dist < SecondDist)
+                        {
+                            SecondDist = Dist;
+                            SecondHex = &Tile;
+                        }
+
                         if (Dist > BlendRadius) continue;
 
                         float Norm = Dist / BlendRadius;
                         float Weight = FMath::Exp(-4.f * Norm * Norm);
 
-                        BiomeHeight += Tile.Height * Weight;
-                        BiomeAmp    += Tile.Amp * Weight;
-
-                        TotalWeight += Weight;
+                        SmoothBiomeHeight += Tile.Height * Weight;
+                        SmoothBiomeAmp    += Tile.Amp * Weight;
+                        SmoothTotalWeight += Weight;
                     }
 
-                    BiomeHeight /= TotalWeight;
-                    BiomeAmp /= TotalWeight;
+                    float BiomeHeight = SmoothBiomeHeight / SmoothTotalWeight;
+                    float BiomeAmp = SmoothBiomeAmp / SmoothTotalWeight;
+
+                    MinDist = ClosestDist;
+
+                    float BorderDist = SecondDist - ClosestDist;
+                    float BlendT = FMath::Clamp((BorderDist + TransitionWidth) / (2.f * TransitionWidth), 0.f, 1.f);
+                    BlendT = SmoothStep(BlendT);
+
+                    auto AssignBiomeWeight = [&](EHexType Type, float W)
+                    {
+                        switch (Type)
+                        {
+                            case EHexType::Forest:   Forest += W; break;
+                            case EHexType::Desert:   Desert += W; break;
+                            case EHexType::Pasture:  Pasture += W; break;
+                            case EHexType::Fields:   Fields += W; break;
+                            case EHexType::Hill:     Hill += W; break;
+                            case EHexType::Mountain: Mountain += W; break;
+                            default: break;
+                        }
+                    };
+
+                    AssignBiomeWeight(ClosestHex->Type, BlendT);
+                    if (SecondHex && BlendT < 1.f)
+                        AssignBiomeWeight(SecondHex->Type, 1.f - BlendT);
+
+                    float Sum = Forest + Desert + Pasture + Fields + Hill + Mountain + 1e-6f;
+                    Forest   /= Sum;
+                    Desert   /= Sum;
+                    Pasture  /= Sum;
+                    Fields   /= Sum;
+                    Hill     /= Sum;
+                    Mountain /= Sum;
+
+                    float GrassLike = Pasture + Fields;
+        uint8 R = (uint8)(FMath::Clamp(Forest,  0.f, 1.f) * 255);
+        uint8 G = (uint8)(FMath::Clamp(Desert,  0.f, 1.f) * 255);
+        uint8 B = (uint8)(FMath::Clamp(Hill,    0.f, 1.f) * 255);
+        uint8 A = (uint8)(FMath::Clamp(Mountain,0.f, 1.f) * 255);
 
                     // ====================================================
                     // 1. DOMAIN WARPING (world shape)
@@ -297,35 +382,21 @@ void ABoardTerrain::GenerateTerrain(const TArray<AHexTile*>& HexTiles, float Hex
                     // 6. GLACIER EDGE FALLOFF (no cliffs)
                     // ====================================================
                     float EdgeDist = MinDist - EdgeStart;
-                    float EdgeMask = FMath::Clamp(EdgeDist / EdgeFade, 0.f, 1.f);
-                    EdgeMask = FMath::Pow(EdgeMask, 2.2f);
+                    float BeachMask = FMath::Clamp(EdgeDist / EdgeFade, 0.f, 1.f);
 
-                    Elevation *= (1.f - EdgeMask * 0.85f);
+                    Elevation *= (1.f - BeachMask * 0.85f);
 
-                    // ====================================================
-                    // 7. DETAIL NOISE (safe, non-breaking)
-                    // ====================================================
-                    float Detail = FBMNoise(
-                        WX * NoiseScale,
-                        WY * NoiseScale,
-                        4,
-                        0.5f,
-                        2.0f
-                    );
-
-                    float DetailAmp = BiomeAmp * HeightScale * 0.12f;
-
-                    float DistFromBorder = HexInnerRadius - MinDist;
-                    float NoiseMask = FMath::SmoothStep(0.f, 1.f,
-                        FMath::Clamp(DistFromBorder / (HexInnerRadius * 0.4f), 0.f, 1.f));
-
-                    // Elevation += Detail * DetailAmp * NoiseMask;
+                    float RoadMask = FMath::Clamp(1.f - BorderDist / RoadWidth, 0.f, 1.f);
 
             Vertices[Index] = FVector(WorldX, WorldY, Elevation);
         UVs[Index] = FVector2D(
         Col / (float)(NumCols - 1),
         Row / (float)(NumRows - 1)
+        
     );
+        UV3s[Index] = FVector2D(BeachMask, RoadMask);
+        UV2s[Index] = FVector2D(Pasture, Fields);
+        VertexColors[Index] = FColor(R, G, B, A);
     });
 
 
@@ -353,8 +424,18 @@ void ABoardTerrain::GenerateTerrain(const TArray<AHexTile*>& HexTiles, float Hex
         Vertices, Triangles, UVs, Normals, Tangents);
 
     TerrainMesh->CreateMeshSection(
-        0, Vertices, Triangles, Normals, UVs,
-        VertexColors, Tangents, true);
+    0, Vertices, Triangles, Normals,
+    UVs,
+    TArray<FVector2D>(),
+    UV2s,
+    UV3s,
+    VertexColors, Tangents, true
+);
+    
+    if (TerrainMaterial)
+    {
+        TerrainMesh->SetMaterial(0, TerrainMaterial);
+    }
     TerrainMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
     TerrainMesh->bUseComplexAsSimpleCollision = true;
     TerrainMesh->SetCollisionObjectType(ECollisionChannel::ECC_WorldStatic);

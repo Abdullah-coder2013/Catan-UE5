@@ -19,6 +19,9 @@ public:
 	UPROPERTY(VisibleAnywhere)
 	UProceduralMeshComponent* TerrainMesh;
 	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Terrain")
+	UMaterialInterface* TerrainMaterial;
+	
 	// In BoardTerrain.h, add:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PCG")
 	UPCGComponent* PCGComponent;
@@ -28,6 +31,9 @@ public:
 
 	UPROPERTY(EditAnywhere, Category = "Terrain")
 	float ElevationScale = 80.f;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Terrain|Material")
+	float RoadWidthGlobal = 0.12f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Terrain|Detail")
 	float DetailAmplitudeMultiplier = 0.15f;
@@ -86,5 +92,7 @@ public:
 		FVector2D Pos;
 		float Height;
 		float Amp;
+		EHexType Type;
+		float BiomeFloat;
 	};
 };

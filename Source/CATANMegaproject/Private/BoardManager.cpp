@@ -395,8 +395,8 @@ void ABoardManager::SnapActorsToTerrain()
         AHexVertex* Vertex = Pair.Value;
         if (!Vertex) continue;
 
-        FVector Start = Vertex->GetActorLocation() + FVector(0, 0, 5000.f);
-        FVector End = Vertex->GetActorLocation() - FVector(0, 0, 5000.f);
+        FVector Start = Vertex->GetActorLocation() + FVector(0, 0, 50000.f);
+        FVector End = Vertex->GetActorLocation() - FVector(0, 0, 50000.f);
 
         FHitResult Hit;
         FCollisionQueryParams Params;

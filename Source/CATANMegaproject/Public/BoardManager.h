@@ -22,7 +22,7 @@ public:
 	// Sets default values for this actor's properties
 	ABoardManager();
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Hex Settings")
-    float HexSize = 1000.f;
+    float HexSize = 10000.f;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Hex Settings")
     TSubclassOf<AHexTile> HexTileClass;

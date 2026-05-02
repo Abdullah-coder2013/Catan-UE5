@@ -34,8 +34,39 @@ void ABoardManager::BeginPlay()
             Terrain->GenerateTerrain(HexTiles, HexSize);
         }
     }
+    
     SnapActorsToTerrain();
 }
+
+void ABoardManager::Tick(float DeltaSeconds)
+{
+    Super::Tick(DeltaSeconds);
+    
+    APlayerController* PC = GetWorld()->GetFirstPlayerController();
+    if (!PC) return;
+
+    APawn* Pawn = PC->GetPawn();
+    if (!Pawn) return;
+
+    FVector CameraLocation = Pawn->GetActorLocation();
+    float Altitude = CameraLocation.Z;
+
+    // Lerp visibility radius based on altitude
+    float EffectiveRadius = FMath::Lerp(
+        NearHexRadius,
+        NearHexRadius * 10.f,
+        FMath::Clamp(Altitude / MaxAltitude, 0.f, 1.f)
+    );
+
+    for (AHexTile* Tile : CachedHexTiles)
+    {
+        if (!Tile) continue;
+
+        float Dist = FVector::Dist2D(CameraLocation, Tile->GetActorLocation());
+        Tile->SetFoliageVisible(Dist < EffectiveRadius);
+    }
+}
+
 void ABoardManager::ApplyMaterials()
 {
     for (AHexTile* Tile : HexTiles)
@@ -121,6 +152,7 @@ int32 ABoardManager::GetLongestRoadLengthForPlayer(EPlayerColor PlayerColor) con
 
 void ABoardManager::GenerateBoard()
 {
+    CachedHexTiles = HexTiles;
     TArray<EHexType> TileTypes = {
         EHexType::Forest,   EHexType::Forest,   EHexType::Forest,  EHexType::Forest,
         EHexType::Pasture,  EHexType::Pasture,  EHexType::Pasture, EHexType::Pasture,
@@ -174,7 +206,7 @@ void ABoardManager::GenerateBoard()
                             Token = NumberTokens[TokenIndex];
                             TokenIndex++;
                         }
-                        NewHexTile->InitializeHex(TileTypes[TileIndex], Token, Q, R, true);
+                        NewHexTile->InitializeHex(TileTypes[TileIndex], Token, Q, R, HexSize, true);
                         HexTiles.Add(NewHexTile);
                         TileIndex++;
                     }
@@ -395,8 +427,8 @@ void ABoardManager::SnapActorsToTerrain()
         AHexVertex* Vertex = Pair.Value;
         if (!Vertex) continue;
 
-        FVector Start = Vertex->GetActorLocation() + FVector(0, 0, 50000.f);
-        FVector End = Vertex->GetActorLocation() - FVector(0, 0, 50000.f);
+        FVector Start = Vertex->GetActorLocation() + FVector(0, 0, 500000.f);
+        FVector End = Vertex->GetActorLocation() - FVector(0, 0, 500000.f);
 
         FHitResult Hit;
         FCollisionQueryParams Params;
@@ -451,8 +483,8 @@ void ABoardManager::SnapActorsToTerrain()
     for (auto Element : HexTiles)
     {
         if (!Element) continue;
-        FVector Start = Element->GetActorLocation() + FVector(0, 0, 50000.f);
-        FVector End = Element->GetActorLocation() - FVector(0, 0, 50000.f);
+        FVector Start = Element->GetActorLocation() + FVector(0, 0, 500000.f);
+        FVector End = Element->GetActorLocation() - FVector(0, 0, 500000.f);
 
         FHitResult Hit;
         FCollisionQueryParams Params;

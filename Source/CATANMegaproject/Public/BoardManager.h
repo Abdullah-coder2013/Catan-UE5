@@ -22,7 +22,7 @@ public:
 	// Sets default values for this actor's properties
 	ABoardManager();
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Hex Settings")
-    float HexSize = 10000.f;
+    float HexSize = 100000.f;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Hex Settings")
     TSubclassOf<AHexTile> HexTileClass;
@@ -41,10 +41,20 @@ public:
 	
 	UPROPERTY(EditAnywhere, Category = "Terrain")
 	TSubclassOf<ABoardTerrain> BoardTerrainClass;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Visibility")
+	float MaxAltitude = 600000.f;    // roughly 6 hex widths up
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Visibility")
+	float NearHexRadius = 300000.f; // radius within which hexes are fully visible
+	
+	// In BoardTerrain.h
+	UPROPERTY()
+	TArray<AHexTile*> CachedHexTiles;
 
 protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
+	virtual void Tick(float DeltaSeconds) override;
 	UPROPERTY()
 	TArray<AHexTile*> HexTiles; // Store pointers to hex tiles for easy access
 	UPROPERTY()

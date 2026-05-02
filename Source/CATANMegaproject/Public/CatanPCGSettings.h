@@ -35,6 +35,23 @@ public:
 	// Populated by BoardTerrain before PCG generates
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings")
 	TArray<AHexTile*> HexTiles;
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings", meta = (PCG_Overridable, ClampMin = "0.0001"))
+	float PointsPerSquareMeter = 0.01f;
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings", meta = (PCG_Overridable, ClampMin = "1.0"))
+	float HexOuterRadius = 100000.f;
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings", meta = (PCG_Overridable, ClampMin = "0.0"))
+	float SnapGridSizeY = 0.f;
+	UPROPERTY(EditAnywhere, Category="PCG")
+	int32 MaxTreesPerHex = 150;
+
+	UPROPERTY(EditAnywhere, Category="PCG")
+	float MinScale = 0.8f;
+
+	UPROPERTY(EditAnywhere, Category="PCG")
+	float MaxScale = 1.2f;
 };
 /**
 * Define various user facing properties here. 

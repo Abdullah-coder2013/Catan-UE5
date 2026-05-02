@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "CatanSharedValues.h"
+#include "Components/HierarchicalInstancedStaticMeshComponent.h"
 #include "HexTile.generated.h"
 
 class AHexVertex;
@@ -12,13 +13,13 @@ class AHexVertex;
 UENUM(BlueprintType)
 enum class EHexType : uint8
 {
-	Desert,
-	Forest,
-	Mountain,
-	Pasture,
-	Fields,
-	Hill,
-	Water
+	Desert, // 0
+	Forest, // 0.2
+	Mountain, // 0.4
+	Pasture, // 0.6
+	Fields, // 0.8
+	Hill, // 1
+	Water // 1.2
 };
 
 UCLASS()
@@ -39,6 +40,8 @@ public:
 	int32 R; // Axial coordinate
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Hex Properties")
 	bool bHasRobber;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Hex Properties")
+	float HexSize; 
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Hex Properties")
 	float BaseElevation;
@@ -54,13 +57,24 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Hex Properties")
 	TArray<AHexVertex*> Vertices;
+	UPROPERTY()
+	TMap<UStaticMesh*,UHierarchicalInstancedStaticMeshComponent*> MeshHISMs;
+	UPROPERTY()
+	TArray<UHierarchicalInstancedStaticMeshComponent*> TrackedHISMs;
 
-	void InitializeHex(EHexType Type, int32 Token, int32 InQ, int32 InR, bool bInitialized);
-	
+	void InitializeHex(EHexType Type, int32 Token, int32 InQ, int32 InR, float HexSizeIn, bool bInitialized);
+	UHierarchicalInstancedStaticMeshComponent* GetOrCreateHISM(UStaticMesh* Mesh);
 	void PlaceRobber(AActor* RobberActor);
+	
+	// HexTile.h
+	bool bFoliageVisible = true;
+
+	void SetFoliageVisible(bool bVisible);
 
 	int32 GetNumberToken() const { return NumberToken; }
 	EResourceType HexTypeToResource() const;
+	void SpawnHISM(UStaticMesh* Mesh, FTransform* SpawnTransform);
+	float GetHexOuterRadius();
 	static float GetBaseElevationForType(EHexType Type)
 	{
 		switch (Type)

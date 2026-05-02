@@ -83,6 +83,7 @@ ABoardTerrain::ABoardTerrain()
     TerrainMesh = CreateDefaultSubobject<UProceduralMeshComponent>(TEXT("TerrainMesh"));
     RootComponent = TerrainMesh;
     PCGComponent = CreateDefaultSubobject<UPCGComponent>(TEXT("PCGComponent"));
+    TerrainMesh->SetupAttachment(RootComponent);
 }
 
 
@@ -571,5 +572,206 @@ void ABoardTerrain::GenerateTerrain(const TArray<AHexTile*>& HexTiles, float Hex
     TerrainMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
     TerrainMesh->bUseComplexAsSimpleCollision = true;
     TerrainMesh->SetCollisionObjectType(ECollisionChannel::ECC_WorldStatic);
-    TriggerPCG(HexTiles);
+    TerrainMesh->SetMobility(EComponentMobility::Static);
+    // TriggerPCG(HexTiles);
+    GetWorld()->GetTimerManager().SetTimerForNextTick([this, HexTiles]()
+    {
+        for (auto Hex : HexTiles)
+            GenerateFoliage(Hex, FoliageDensityBig, FoliageDensityMedium, FoliageDensitySmall);
+    });
+}
+
+TArray<FVector> ABoardTerrain::GenerateProceduralFoliageForBiomeHex(AHexTile* HexTile, float PointsPerMeter)
+{
+        if (!HexTile) return TArray<FVector>();
+    
+    FVector HexLocation = HexTile->GetActorLocation();
+    float HexRadius = HexTile->GetHexOuterRadius();
+    // Convert radius to meters first
+    float HexRadiusMeters = HexRadius / 100.f;
+    float HexAreaM2 = (3.f * FMath::Sqrt(3.f) / 2.f) * HexRadiusMeters * HexRadiusMeters;
+    int32 NumPoints = 
+        FMath::RoundToInt(HexAreaM2 * PointsPerMeter);
+    
+        TArray<FVector> FoliagePositions;
+        FoliagePositions.Reserve(NumPoints);
+    
+        for (int32 i = 0; i < NumPoints; i++)
+        {
+            int32 Sector = FMath::RandRange(0, 5);
+            float Angle1 = Sector * (PI / 3.f) + PI / 6.f;
+            float Angle2 = (Sector + 1) * (PI / 3.f) + PI / 6.f;
+
+            FVector2D V1(FMath::Cos(Angle1) * HexRadius, FMath::Sin(Angle1) * HexRadius);
+            FVector2D V2(FMath::Cos(Angle2) * HexRadius, FMath::Sin(Angle2) * HexRadius);
+
+            float r1 = FMath::Sqrt(FMath::RandRange(0.f, 1.f));
+            float r2 = FMath::RandRange(0.f, 1.f);
+
+            FVector2D HexPoint = V1 * (r1 * (1.f - r2)) + V2 * (r1 * r2);
+            FVector SpawnLocation = HexLocation + FVector(HexPoint.X, HexPoint.Y, 0.f);
+    
+            FoliagePositions.Add(SpawnLocation);
+        }
+    return FoliagePositions;
+}
+
+void ABoardTerrain::GenerateFoliage(AHexTile* HexTile, float PointsPerMeterBIG, float PointsPerMeterMEDIUM,
+    float PointsPerMeterSMALL)
+{
+    // Big Foliage
+    TArray<FVector> PointsForBigMesh = GenerateProceduralFoliageForBiomeHex(HexTile, PointsPerMeterBIG);
+    SpawnMeshesForHexTile(HexTile, PointsForBigMesh, 0.3f, 3, EFoliageType::Large);
+    
+    // Medium Foliage
+    TArray<FVector> PointsForMediumMesh = GenerateProceduralFoliageForBiomeHex(HexTile, PointsPerMeterMEDIUM);
+    SpawnMeshesForHexTile(HexTile, PointsForMediumMesh, 0.5f, 3, EFoliageType::Medium);
+    
+    // Small Foliage
+    TArray<FVector> PointsForSmallMesh = GenerateProceduralFoliageForBiomeHex(HexTile, PointsPerMeterSMALL);
+    SpawnMeshesForHexTile(HexTile, PointsForSmallMesh, 0.7f, 3, EFoliageType::Small);
+    
+}
+
+void ABoardTerrain::SpawnMeshesForHexTile(AHexTile* HexTile, TArray<FVector> PointPositions, float Density, float Octaves, EFoliageType FoliageType)
+{
+    if (!HexTile) { UE_LOG(LogTemp, Error, TEXT("HexTile is null")); return; }
+    if (PointPositions.Num() == 0) { UE_LOG(LogTemp, Error, TEXT("No points for hex")); return; }
+
+    UStaticMesh* Mesh = GetStaticMeshForBiome(HexTile->HexType, FoliageType);
+    if (!Mesh) 
+    { 
+        UE_LOG(LogTemp, Error, TEXT("No mesh for biome type %d — array is probably empty in editor"), 
+            static_cast<int32>(HexTile->HexType)); 
+        return; 
+    }
+
+    UE_LOG(LogTemp, Warning, TEXT("Spawning %d points for biome %d"), 
+        PointPositions.Num(), static_cast<int32>(HexTile->HexType));
+
+    UHierarchicalInstancedStaticMeshComponent* HISM = HexTile->GetOrCreateHISM(Mesh);
+    if (!HISM) { UE_LOG(LogTemp, Error, TEXT("HISM creation failed")); return; }
+
+    UE_LOG(LogTemp, Warning, TEXT("HISM created successfully"));
+
+    FRandomStream RNG(Seed + GetUniqueID());
+
+    // Single trace per hex for base Z
+    FVector HexCenter = HexTile->GetActorLocation();
+    FHitResult CenterHit;
+    float BaseZ = HexCenter.Z;
+    if (GetWorld()->LineTraceSingleByChannel(
+        CenterHit,
+        HexCenter + FVector(0, 0, 50000.f),
+        HexCenter - FVector(0, 0, 50000.f),
+        ECC_Visibility))
+    {
+        BaseZ = CenterHit.ImpactPoint.Z;
+    }
+    int32 SpawnedCount = 0;
+    for (const FVector& Position : PointPositions)
+    {
+        float Yaw   = RNG.FRandRange(0.f, 360.f);
+        float Scale = RNG.FRandRange(0.8f, 1.2f);
+
+        // Per point trace for accurate Z
+        FHitResult Hit;
+        FVector Start = FVector(Position.X, Position.Y, 500000.f);
+        FVector End   = FVector(Position.X, Position.Y, -500000.f);
+    
+        FCollisionQueryParams Params(TEXT("FoliageSnap"), false); // false = no complex collision
+        Params.AddIgnoredActor(HexTile);
+        
+        float Noise1 = FBMNoise(Position.X * 0.1f, Position.Y * 0.1f, Octaves, 0.5f, 2.0f);
+        float Noise2 = FBMNoise(Position.X * 0.5f + 1000.f, Position.Y * 0.5f + 1000.f, Octaves, 0.5f, 2.0f);
+        float NoiseValue = (Noise1 + Noise2) * 0.5f; // Combine octaves
+        float Threshold = FMath::Lerp(0.3f, 0.7f, Density); // Adjust threshold based on density parameter
+        if (NoiseValue > Threshold) { continue; }
+    
+        float SnappedZ = BaseZ; // fallback
+        if (GetWorld()->LineTraceSingleByChannel(Hit, Start, End, ECC_WorldStatic, Params))
+        {
+            SnappedZ = Hit.ImpactPoint.Z;
+        }
+
+        FTransform T(
+            FRotator(0.f, Yaw, 0.f),
+            FVector(Position.X, Position.Y, SnappedZ),
+            FVector(Scale));
+
+        HISM->AddInstance(T, true);
+        SpawnedCount++;
+    }
+    UE_LOG(LogTemp, Warning, TEXT("Actually spawned %d instances after noise filter"), SpawnedCount);
+    // In SpawnMeshesForHexTile
+    switch (FoliageType)
+    {
+    case EFoliageType::Large:
+        HISM->SetCastShadow(true);          // trees cast shadows
+        HISM->SetCullDistances(10000, 150000);
+        break;
+    case EFoliageType::Medium:
+        HISM->SetCastShadow(true);         // no shadows
+        HISM->SetCullDistances(5000, 80000);
+        break;
+    case EFoliageType::Small:
+        HISM->SetCastShadow(false);         // no shadows
+        HISM->SetCullDistances(1000, 30000);
+        break;
+    }
+}
+
+UStaticMesh* ABoardTerrain::GetStaticMeshForBiome(EHexType HexType, EFoliageType FoliageType)
+{
+    FRandomStream RNG(Seed + GetUniqueID() + static_cast<int32>(HexType) + static_cast<int32>(FoliageType));
+
+    // Safe random pick from any array
+    auto SafePick = [&](const TArray<UStaticMesh*>& Meshes) -> UStaticMesh*
+    {
+        if (Meshes.Num() == 0) return nullptr;
+        return Meshes[RNG.RandRange(0, Meshes.Num() - 1)];
+    };
+
+    // Map biome + foliage type to the right array
+    switch (FoliageType)
+    {
+    case EFoliageType::Large:
+        switch (HexType)
+        {
+        case EHexType::Forest:   return SafePick(BigForestMeshes);
+        case EHexType::Hill:     return SafePick(BigHillMeshes);
+        case EHexType::Desert:   return SafePick(BigDesertMeshes);
+        case EHexType::Fields:   return SafePick(BigFieldsMeshes);
+        case EHexType::Pasture:  return SafePick(BigPasturesMeshes);
+        case EHexType::Mountain: return SafePick(BigMountainMeshes);
+        default:                 return nullptr;
+        }
+
+    case EFoliageType::Medium:
+        switch (HexType)
+        {
+        case EHexType::Forest:   return SafePick(MediumForestMeshes);
+        case EHexType::Hill:     return SafePick(MediumHillMeshes);
+        case EHexType::Desert:   return SafePick(MediumDesertMeshes);
+        case EHexType::Fields:   return SafePick(MediumFieldsMeshes);
+        case EHexType::Pasture:  return SafePick(MediumPasturesMeshes);
+        case EHexType::Mountain: return SafePick(MediumMountainMeshes);
+        default:                 return nullptr;
+        }
+
+    case EFoliageType::Small:
+        switch (HexType)
+        {
+        case EHexType::Forest:   return SafePick(SmallForestMeshes);
+        case EHexType::Hill:     return SafePick(SmallHillMeshes);
+        case EHexType::Desert:   return SafePick(SmallDesertMeshes);
+        case EHexType::Fields:   return SafePick(SmallFieldsMeshes);
+        case EHexType::Pasture:  return SafePick(SmallPasturesMeshes);
+        case EHexType::Mountain: return SafePick(SmallMountainMeshes);
+        default:                 return nullptr;
+        }
+
+    default:
+        return nullptr;
+    }
 }

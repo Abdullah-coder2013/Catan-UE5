@@ -4,9 +4,16 @@
 #include "HexTile.h"
 #include "GameFramework/Actor.h"
 #include "ProceduralMeshComponent.h"
+#include "PCGComponent.h"
 #include "BoardTerrain.generated.h"
 
-class UPCGComponent;
+UENUM()
+enum EFoliageType
+{
+	Small,
+	Medium,
+	Large
+};
 
 UCLASS()
 class CATANMEGAPROJECT_API ABoardTerrain : public AActor
@@ -30,7 +37,64 @@ public:
 
 	UPROPERTY(EditAnywhere, Category = "Terrain|Texture", meta = (ClampMin = "256", ClampMax = "8192"))
 	int32 BiomeTextureResolution = 4096;
-
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Foliage Generation")
+	float FoliageDensityBig = 0.01f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Foliage Generation")
+	float FoliageDensityMedium = 0.03f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Foliage Generation")
+	float FoliageDensitySmall = 0.1f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Foliage Generation")
+	float Seed;
+	
+	// Forest
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Foliage Generation|Biome Meshes")
+	TArray<UStaticMesh*> BigForestMeshes;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Foliage Generation|Biome Meshes")
+	TArray<UStaticMesh*> MediumForestMeshes;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Foliage Generation|Biome Meshes")
+	TArray<UStaticMesh*> SmallForestMeshes;
+	
+	// Desert
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Foliage Generation|Biome Meshes")
+	TArray<UStaticMesh*> BigDesertMeshes;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Foliage Generation|Biome Meshes")
+	TArray<UStaticMesh*> MediumDesertMeshes;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Foliage Generation|Biome Meshes")
+	TArray<UStaticMesh*> SmallDesertMeshes;
+	
+	// Pastures
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Foliage Generation|Biome Meshes")
+	TArray<UStaticMesh*> BigPasturesMeshes;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Foliage Generation|Biome Meshes")
+	TArray<UStaticMesh*> MediumPasturesMeshes;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Foliage Generation|Biome Meshes")
+	TArray<UStaticMesh*> SmallPasturesMeshes;
+	
+	// Hill
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Foliage Generation|Biome Meshes")
+	TArray<UStaticMesh*> BigHillMeshes;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Foliage Generation|Biome Meshes")
+	TArray<UStaticMesh*> MediumHillMeshes;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Foliage Generation|Biome Meshes")
+	TArray<UStaticMesh*> SmallHillMeshes;
+	
+	// Fields
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Foliage Generation|Biome Meshes")
+	TArray<UStaticMesh*> BigFieldsMeshes;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Foliage Generation|Biome Meshes")
+	TArray<UStaticMesh*> MediumFieldsMeshes;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Foliage Generation|Biome Meshes")
+	TArray<UStaticMesh*> SmallFieldsMeshes;
+	
+	// Mountain
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Foliage Generation|Biome Meshes")
+	TArray<UStaticMesh*> BigMountainMeshes;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Foliage Generation|Biome Meshes")
+	TArray<UStaticMesh*> MediumMountainMeshes;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Foliage Generation|Biome Meshes")
+	TArray<UStaticMesh*> SmallMountainMeshes;
+	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PCG")
 	UPCGComponent* PCGComponent;
 
@@ -92,6 +156,14 @@ public:
 	float TerrainShapeWeight = 0.1f;
 
 	void GenerateTerrain(const TArray<AHexTile*>& HexTiles, float HexSize);
+	
+	TArray<FVector> GenerateProceduralFoliageForBiomeHex(AHexTile* HexTile, float PointsPerMeter);
+	
+	void GenerateFoliage(AHexTile* HexTile, float PointsPerMeterBIG, float PointsPerMeterMEDIUM, float PointsPerMeterSMALL);
+	
+	void SpawnMeshesForHexTile(AHexTile* HexTile, TArray<FVector> PointPositions, float Density = 0.3f, float Octaves = 3, EFoliageType FoliageType = EFoliageType::Medium);
+	
+	UStaticMesh* GetStaticMeshForBiome(EHexType HexType, EFoliageType FoliageType = EFoliageType::Medium);
 	
 	void TriggerPCG(const TArray<AHexTile*>& HexTiles);
 

@@ -648,8 +648,16 @@ void ABoardTerrain::SpawnMeshesForHexTile(AHexTile* HexTile, TArray<FVector> Poi
 
     UE_LOG(LogTemp, Warning, TEXT("Spawning %d points for biome %d"), 
         PointPositions.Num(), static_cast<int32>(HexTile->HexType));
-
-    UHierarchicalInstancedStaticMeshComponent* HISM = HexTile->GetOrCreateHISM(Mesh);
+    
+    EFoliageSize FoliageSize;
+    switch (FoliageType)
+    {
+    case EFoliageType::Large:  FoliageSize = EFoliageSize::LargeF; break;
+    case EFoliageType::Medium: FoliageSize = EFoliageSize::MediumF; break;
+    case EFoliageType::Small:  FoliageSize = EFoliageSize::SmallF; break;
+    default: FoliageSize = EFoliageSize::MediumF; break;
+    }
+    UHierarchicalInstancedStaticMeshComponent* HISM = HexTile->GetOrCreateHISM(Mesh, FoliageSize);
     if (!HISM) { UE_LOG(LogTemp, Error, TEXT("HISM creation failed")); return; }
 
     UE_LOG(LogTemp, Warning, TEXT("HISM created successfully"));
@@ -669,6 +677,7 @@ void ABoardTerrain::SpawnMeshesForHexTile(AHexTile* HexTile, TArray<FVector> Poi
         BaseZ = CenterHit.ImpactPoint.Z;
     }
     int32 SpawnedCount = 0;
+    HISM->bAutoRebuildTreeOnInstanceChanges = false;
     for (const FVector& Position : PointPositions)
     {
         float Yaw   = RNG.FRandRange(0.f, 360.f);
@@ -703,23 +712,143 @@ void ABoardTerrain::SpawnMeshesForHexTile(AHexTile* HexTile, TArray<FVector> Poi
         SpawnedCount++;
     }
     UE_LOG(LogTemp, Warning, TEXT("Actually spawned %d instances after noise filter"), SpawnedCount);
-    // In SpawnMeshesForHexTile
+    HISM->BuildTreeIfOutdated(false, true);
     switch (FoliageType)
     {
     case EFoliageType::Large:
-        HISM->SetCastShadow(true);          // trees cast shadows
-        HISM->SetCullDistances(10000, 150000);
+        HISM->SetCastShadow(true); // only for large trees
+        HISM->ShadowCacheInvalidationBehavior = EShadowCacheInvalidationBehavior::Static;        // trees cast shadows
+        HISM->SetCullDistances(5000, 15000);
         break;
     case EFoliageType::Medium:
-        HISM->SetCastShadow(true);         // no shadows
-        HISM->SetCullDistances(5000, 80000);
+        HISM->SetCastShadow(true); // only for large trees
+        HISM->ShadowCacheInvalidationBehavior = EShadowCacheInvalidationBehavior::Static;        // no shadows
+        HISM->SetCullDistances(2000, 6000);
         break;
     case EFoliageType::Small:
         HISM->SetCastShadow(false);         // no shadows
-        HISM->SetCullDistances(1000, 30000);
+        HISM->SetCullDistances(500, 2000);
         break;
     }
 }
+
+
+void ABoardTerrain::UpdateHexStreaming(FVector CameraLocation)
+{
+    AHexTile* FocusedHex = GetFocusedHex(CameraLocation);
+    for (AHexTile* Tile : CachedHexTiles)
+    {
+        if (!Tile) continue;
+
+        float Dist = FVector::Dist2D(CameraLocation, Tile->GetActorLocation());
+        EHexDetailLevel NewLevel;
+
+        if (Tile == FocusedHex)
+            NewLevel = EHexDetailLevel::Full;
+        else if (Dist < FullDetailRadius)
+            NewLevel = EHexDetailLevel::Full;
+        else if (Dist < MediumDetailRadius)
+            NewLevel = EHexDetailLevel::Medium;
+        else if (Dist < ImpostorRadius)
+            NewLevel = EHexDetailLevel::Impostor;
+        else
+            NewLevel = EHexDetailLevel::Canopy;
+
+        if (Tile->CurrentDetailLevel != NewLevel)
+        {
+            // Defer clearing with timer to avoid pop
+            if (NewLevel < Tile->CurrentDetailLevel)
+            {
+                GetWorld()->GetTimerManager().SetTimer(
+                    Tile->ClearTimer,
+                    [this, Tile, NewLevel]()
+                    {
+                        SetHexDetailLevel(Tile, NewLevel);
+                    },
+                    2.0f, false);
+            }
+            else
+            {
+                // Upgrading detail — do immediately
+                GetWorld()->GetTimerManager().ClearTimer(Tile->ClearTimer);
+                SetHexDetailLevel(Tile, NewLevel);
+            }
+        }
+    }
+}
+
+void ABoardTerrain::SetHexDetailLevel(AHexTile* Tile, EHexDetailLevel Level)
+{
+    if (Tile->CurrentDetailLevel == Level) return;
+    Tile->CurrentDetailLevel = Level;
+
+    Tile->ClearFoliage();
+
+    switch (Level)
+    {
+    case EHexDetailLevel::Full:
+        GenerateFoliage(Tile, 
+            FoliageDensityBig, 
+            FoliageDensityMedium, 
+            FoliageDensitySmall);
+        break;
+
+    case EHexDetailLevel::Medium:
+        GenerateFoliage(Tile, 
+            FoliageDensityBig * 0.2f, 
+            0.f, 0.f);
+        break;
+
+    case EHexDetailLevel::Impostor:
+        // SpawnImpostorForHex(Tile);
+        break;
+
+    case EHexDetailLevel::Canopy:
+        // Terrain material handles visual
+        break;
+    }
+}
+
+
+
+AHexTile* ABoardTerrain::GetFocusedHex(FVector CameraLocation)
+{
+    AHexTile* Closest = nullptr;
+    float ClosestDist = FLT_MAX;
+
+    for (AHexTile* Tile : CachedHexTiles)
+    {
+        if (!Tile) continue;
+        float Dist = FVector::Dist2D(CameraLocation, Tile->GetActorLocation());
+        if (Dist < ClosestDist)
+        {
+            ClosestDist = Dist;
+            Closest = Tile;
+        }
+    }
+    return Closest;
+}
+
+void ABoardTerrain::BeginPlay()
+{
+    Super::BeginPlay();
+
+    // Update streaming every 0.5 seconds not every tick
+    GetWorld()->GetTimerManager().SetTimer(
+        StreamingTimer,
+        [this]()
+        {
+            if (APlayerController* PC = 
+                GetWorld()->GetFirstPlayerController())
+            {
+                if (APawn* Pawn = PC->GetPawn())
+                    UpdateHexStreaming(Pawn->GetActorLocation());
+            }
+        },
+        StreamingUpdateInterval, true);
+}
+
+
 
 UStaticMesh* ABoardTerrain::GetStaticMeshForBiome(EHexType HexType, EFoliageType FoliageType)
 {

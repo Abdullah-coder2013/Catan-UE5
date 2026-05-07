@@ -53,6 +53,14 @@ void AHexTile::SetFoliageVisible(bool bVisible)
 	}
 }
 
+void AHexTile::ClearFoliage()
+{
+	for (UHierarchicalInstancedStaticMeshComponent* HISM : TrackedHISMs)
+	{
+		if (HISM) HISM->ClearInstances();
+	}
+}
+
 EResourceType AHexTile::HexTypeToResource() const
 {
 	switch (static_cast<uint8>(HexType))
@@ -74,7 +82,7 @@ EResourceType AHexTile::HexTypeToResource() const
 	}
 }
 
-UHierarchicalInstancedStaticMeshComponent* AHexTile::GetOrCreateHISM(UStaticMesh* Mesh)
+UHierarchicalInstancedStaticMeshComponent* AHexTile::GetOrCreateHISM(UStaticMesh* Mesh, EFoliageSize DetailLevel)
 {
 	if (!Mesh) return nullptr;
     
@@ -86,19 +94,36 @@ UHierarchicalInstancedStaticMeshComponent* AHexTile::GetOrCreateHISM(UStaticMesh
     
 	HISM->SetStaticMesh(Mesh);
 	HISM->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	HISM->bAutoRebuildTreeOnInstanceChanges = false;
 	HISM->RegisterComponent();
+	switch (DetailLevel)
+	{
+		case EFoliageSize::SmallF:
+			HISM->SetCullDistances(0.f, 5000.f);
+			break;
+		case EFoliageSize::MediumF:
+			HISM->SetCullDistances(0.f, 15000.f);
+			break;
+		case EFoliageSize::LargeF:	
+			HISM->SetCullDistances(0.f, 50000.f);
+			break;
+		 default:
+			HISM->SetCullDistances(2000.f, 4000.f);
+			 break;
+	}
+	
 	HISM->AttachToComponent(
 		RootComponent,
 		FAttachmentTransformRules::KeepRelativeTransform);
-
+	HISM->SetMobility(EComponentMobility::Static);
 	MeshHISMs.Add(Mesh, HISM);
 	TrackedHISMs.Add(HISM);
 	return HISM;
 }
 
-void AHexTile::SpawnHISM(UStaticMesh* Mesh, FTransform* SpawnTransform)
+void AHexTile::SpawnHISM(UStaticMesh* Mesh, FTransform* SpawnTransform, EFoliageSize DetailLevel)
 {
-	if (UHierarchicalInstancedStaticMeshComponent* HISM = GetOrCreateHISM(Mesh))
+	if (UHierarchicalInstancedStaticMeshComponent* HISM = GetOrCreateHISM(Mesh, DetailLevel))
 	{
 		HISM->AddInstance(SpawnTransform ? *SpawnTransform : FTransform::Identity);
 	}

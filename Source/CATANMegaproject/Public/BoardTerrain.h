@@ -8,7 +8,7 @@
 #include "BoardTerrain.generated.h"
 
 UENUM()
-enum EFoliageType
+enum class EFoliageType : uint8
 {
 	Small,
 	Medium,
@@ -97,6 +97,27 @@ public:
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PCG")
 	UPCGComponent* PCGComponent;
+	
+	UPROPERTY()
+	TArray<AHexTile*> CachedHexTiles;
+
+	UPROPERTY(EditAnywhere, Category="Streaming")
+	float FullDetailRadius = 150000.f;
+
+	UPROPERTY(EditAnywhere, Category="Streaming")
+	float MediumDetailRadius = 300000.f;
+
+	UPROPERTY(EditAnywhere, Category="Streaming")
+	float ImpostorRadius = 500000.f;
+
+	UPROPERTY(EditAnywhere, Category="Streaming")
+	float StreamingUpdateInterval = 0.5f;
+
+	FTimerHandle StreamingTimer;
+
+	void UpdateHexStreaming(FVector CameraLocation);
+	void SetHexDetailLevel(AHexTile* Tile, EHexDetailLevel Level);
+	AHexTile* GetFocusedHex(FVector CameraLocation);
 
 	UPROPERTY(EditAnywhere, Category = "Terrain")
 	float Resolution = 50.f;
@@ -166,7 +187,7 @@ public:
 	UStaticMesh* GetStaticMeshForBiome(EHexType HexType, EFoliageType FoliageType = EFoliageType::Medium);
 	
 	void TriggerPCG(const TArray<AHexTile*>& HexTiles);
-
+	
 	struct FHexData
 	{
 		FVector2D Pos;
@@ -175,4 +196,7 @@ public:
 		EHexType Type;
 		float BiomeFloat;
 	};
+	
+protected:
+	virtual void BeginPlay() override;
 };

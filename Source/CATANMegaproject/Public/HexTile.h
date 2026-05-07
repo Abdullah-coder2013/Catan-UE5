@@ -51,6 +51,11 @@ public:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Hex Components")
 	UStaticMeshComponent* HexMesh;
+	
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Hex Components")
+	TEnumAsByte<EHexDetailLevel> CurrentDetailLevel;
+
+	FTimerHandle ClearTimer;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Hex Properties")
 	bool isInitialized;
@@ -63,17 +68,19 @@ public:
 	TArray<UHierarchicalInstancedStaticMeshComponent*> TrackedHISMs;
 
 	void InitializeHex(EHexType Type, int32 Token, int32 InQ, int32 InR, float HexSizeIn, bool bInitialized);
-	UHierarchicalInstancedStaticMeshComponent* GetOrCreateHISM(UStaticMesh* Mesh);
+	UHierarchicalInstancedStaticMeshComponent* GetOrCreateHISM(UStaticMesh* Mesh, EFoliageSize DetailLevel);
 	void PlaceRobber(AActor* RobberActor);
 	
 	// HexTile.h
 	bool bFoliageVisible = true;
 
 	void SetFoliageVisible(bool bVisible);
+	
+	void ClearFoliage();
 
 	int32 GetNumberToken() const { return NumberToken; }
 	EResourceType HexTypeToResource() const;
-	void SpawnHISM(UStaticMesh* Mesh, FTransform* SpawnTransform);
+	void SpawnHISM(UStaticMesh* Mesh, FTransform* SpawnTransform, EFoliageSize DetailLevel);
 	float GetHexOuterRadius();
 	static float GetBaseElevationForType(EHexType Type)
 	{

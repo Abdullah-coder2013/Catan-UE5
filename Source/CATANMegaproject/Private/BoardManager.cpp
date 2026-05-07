@@ -67,6 +67,35 @@ void ABoardManager::Tick(float DeltaSeconds)
     }
 }
 
+void ABoardManager::SpawnImpostorForHex(AHexTile* Tile)
+{
+    // if (!ImpostorMesh) return; // assign in editor
+    //
+    // UHierarchicalInstancedStaticMeshComponent* HISM = nullptr;
+    // if (BoardHISMs.Contains(ImpostorMesh))
+    //     HISM = BoardHISMs[ImpostorMesh];
+    // else
+    // {
+    //     HISM = NewObject<UHierarchicalInstancedStaticMeshComponent>(this);
+    //     HISM->SetStaticMesh(ImpostorMesh);
+    //     HISM->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    //     HISM->SetCastShadow(false);
+    //     HISM->SetMobility(EComponentMobility::Movable);
+    //     HISM->RegisterComponent();
+    //     HISM->AttachToComponent(RootComponent,
+    //         FAttachmentTransformRules::KeepWorldTransform);
+    //     MeshHISMs.Add(ImpostorMesh, HISM);
+    //     TrackedBoardHISMs.Add(HISM);
+    // }
+    //
+    // FTransform T(
+    //     FRotator::ZeroRotator,
+    //     Tile->GetActorLocation(),
+    //     FVector(1.f));
+    //
+    // HISM->AddInstanceWorldSpace(T);
+}
+
 void ABoardManager::ApplyMaterials()
 {
     for (AHexTile* Tile : HexTiles)

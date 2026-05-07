@@ -55,6 +55,7 @@ protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaSeconds) override;
+	void SpawnImpostorForHex(AHexTile* Tile);
 	UPROPERTY()
 	TArray<AHexTile*> HexTiles; // Store pointers to hex tiles for easy access
 	UPROPERTY()

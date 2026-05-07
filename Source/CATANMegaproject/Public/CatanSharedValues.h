@@ -37,6 +37,23 @@ enum class EBankTradeMethods : uint8
     
 };
 
+UENUM()
+enum EHexDetailLevel
+{
+    Full,
+    Medium,
+    Impostor,
+    Canopy
+};
+
+UENUM()
+enum EFoliageSize
+{
+    SmallF,
+    MediumF,
+    LargeF
+};
+
 UENUM(BlueprintType)
 enum class ESettlementType : uint8
 {

@@ -47,6 +47,13 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Foliage Generation")
 	float Seed;
 	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Foliage Generation")
+	float MinScale = 0.8f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Foliage Generation")
+	float MaxScale = 1.2f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Foliage Generation")
+	float ScaleMultiplier = 3.2f;
+	
 	// Forest
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Foliage Generation|Biome Meshes")
 	TArray<UStaticMesh*> BigForestMeshes;

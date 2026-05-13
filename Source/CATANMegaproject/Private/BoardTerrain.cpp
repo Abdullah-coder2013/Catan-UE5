@@ -681,7 +681,21 @@ void ABoardTerrain::SpawnMeshesForHexTile(AHexTile* HexTile, TArray<FVector> Poi
     for (const FVector& Position : PointPositions)
     {
         float Yaw   = RNG.FRandRange(0.f, 360.f);
-        float Scale = RNG.FRandRange(0.8f, 1.2f);
+        float Scale = 1.0f;
+        switch (FoliageSize)
+        {
+            case EFoliageSize::LargeF:
+                Scale = RNG.FRandRange(MinScale,MaxScale);
+                break;
+            case EFoliageSize::MediumF:
+                Scale = RNG.FRandRange(MinScale * ScaleMultiplier, MaxScale * ScaleMultiplier);
+                break;
+            case EFoliageSize::SmallF:
+                Scale = RNG.FRandRange(MinScale * ScaleMultiplier, MaxScale * ScaleMultiplier );
+                break;
+            default:
+                break;
+        }
 
         // Per point trace for accurate Z
         FHitResult Hit;
@@ -718,16 +732,16 @@ void ABoardTerrain::SpawnMeshesForHexTile(AHexTile* HexTile, TArray<FVector> Poi
     case EFoliageType::Large:
         HISM->SetCastShadow(true); // only for large trees
         HISM->ShadowCacheInvalidationBehavior = EShadowCacheInvalidationBehavior::Static;        // trees cast shadows
-        HISM->SetCullDistances(5000, 15000);
+        HISM->SetCullDistances(0, 10000000);
         break;
     case EFoliageType::Medium:
         HISM->SetCastShadow(true); // only for large trees
         HISM->ShadowCacheInvalidationBehavior = EShadowCacheInvalidationBehavior::Static;        // no shadows
-        HISM->SetCullDistances(2000, 6000);
+        HISM->SetCullDistances(0, 10000000);
         break;
     case EFoliageType::Small:
         HISM->SetCastShadow(false);         // no shadows
-        HISM->SetCullDistances(500, 2000);
+        HISM->SetCullDistances(0, 10000000);
         break;
     }
 }

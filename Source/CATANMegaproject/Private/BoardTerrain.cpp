@@ -77,6 +77,60 @@ namespace
     }
 }
 
+float ABoardTerrain::ComputeTerrainHeightAt(float WorldX, float WorldY) const
+{
+    if (CachedHeightGrid.Num() == 0 || CachedGridCellSize <= 0.f) return 0.f;
+
+    float U = (WorldX - CachedGridWorldMin.X) / CachedGridCellSize;
+    float V = (WorldY - CachedGridWorldMin.Y) / CachedGridCellSize;
+
+    int32 Col = FMath::FloorToInt(U);
+    int32 Row = FMath::FloorToInt(V);
+
+    Col = FMath::Clamp(Col, 0, CachedGridNumCols - 2);
+    Row = FMath::Clamp(Row, 0, CachedGridNumRows - 2);
+
+    float FracCol = FMath::Clamp(U - (float)Col, 0.f, 1.f);
+    float FracRow = FMath::Clamp(V - (float)Row, 0.f, 1.f);
+
+    int32 BL = Row * CachedGridNumCols + Col;
+    int32 BR = BL + 1;
+    int32 TL = BL + CachedGridNumCols;
+    int32 TR = TL + 1;
+
+    float H_BL = CachedHeightGrid[BL];
+    float H_BR = CachedHeightGrid[BR];
+    float H_TL = CachedHeightGrid[TL];
+    float H_TR = CachedHeightGrid[TR];
+
+    if (FracCol + FracRow <= 1.f)
+    {
+        return H_BL * (1.f - FracCol - FracRow) + H_TL * FracRow + H_BR * FracCol;
+    }
+    else
+    {
+        float Fu = 1.f - FracCol;
+        float Fv = 1.f - FracRow;
+        return H_TR * (1.f - Fu - Fv) + H_BR * Fu + H_TL * Fv;
+    }
+}
+
+FVector ABoardTerrain::ComputeTerrainNormalAt(float WorldX, float WorldY) const
+{
+    if (CachedHeightGrid.Num() == 0) return FVector::UpVector;
+
+    const float Epsilon = CachedGridCellSize * 0.5f;
+
+    float HC = ComputeTerrainHeightAt(WorldX, WorldY);
+    float HX = ComputeTerrainHeightAt(WorldX + Epsilon, WorldY);
+    float HY = ComputeTerrainHeightAt(WorldX, WorldY + Epsilon);
+
+    float Dx = (HX - HC) / Epsilon;
+    float Dy = (HY - HC) / Epsilon;
+
+    return FVector(-Dx, -Dy, 1.f).GetSafeNormal();
+}
+
 ABoardTerrain::ABoardTerrain()
 {
     PrimaryActorTick.bCanEverTick = false;
@@ -214,14 +268,16 @@ void ABoardTerrain::GenerateTerrain(const TArray<AHexTile*>& HexTiles, float Hex
     UV2s.SetNum(NumVerts);
     VertexColors.SetNum(NumVerts);
 
-    TArray<FHexData> HexData;
+    CachedHexSize = HexSize;
+
+    TArray<FCachedHexData> HexData;
     HexData.Reserve(HexTiles.Num());
 
     for (AHexTile* Tile : HexTiles)
     {
         if (!Tile) continue;
 
-        FHexData Data;
+        FCachedHexData Data;
         Data.Pos = FVector2D(Tile->GetActorLocation().X, Tile->GetActorLocation().Y);
         Data.Height = GetBiomeBaseHeight(Tile->HexType);
         Data.Amp = GetTileAmplitude(Tile->HexType);
@@ -229,6 +285,8 @@ void ABoardTerrain::GenerateTerrain(const TArray<AHexTile*>& HexTiles, float Hex
         Data.BiomeFloat = BiomeToFloat(Tile->HexType);
         HexData.Add(Data);
     }
+
+    CachedHexData = HexData;
     
     ParallelFor(NumVerts, [&](int32 Index)
         {
@@ -255,10 +313,10 @@ void ABoardTerrain::GenerateTerrain(const TArray<AHexTile*>& HexTiles, float Hex
 
                     float ClosestDist = FLT_MAX;
                     float SecondDist = FLT_MAX;
-                    const FHexData* ClosestHex = nullptr;
-                    const FHexData* SecondHex = nullptr;
+                    const FCachedHexData* ClosestHex = nullptr;
+                    const FCachedHexData* SecondHex = nullptr;
 
-                    for (const FHexData& Tile : HexData)
+                    for (const FCachedHexData& Tile : HexData)
                     {
                         float Dist = FVector2D::Distance(P, Tile.Pos);
                         MinDist = FMath::Min(MinDist, Dist);
@@ -403,6 +461,14 @@ void ABoardTerrain::GenerateTerrain(const TArray<AHexTile*>& HexTiles, float Hex
     });
 
 
+    CachedHeightGrid.SetNum(NumVerts);
+    for (int32 i = 0; i < NumVerts; i++)
+        CachedHeightGrid[i] = Vertices[i].Z;
+    CachedGridWorldMin = WorldMin;
+    CachedGridNumCols = NumCols;
+    CachedGridNumRows = NumRows;
+    CachedGridCellSize = Resolution;
+
     // ----------------------------------------------------
     // MESH BUILD
     // ----------------------------------------------------
@@ -480,10 +546,10 @@ void ABoardTerrain::GenerateTerrain(const TArray<AHexTile*>& HexTiles, float Hex
 
             float ClosestDist = FLT_MAX;
             float SecondDist = FLT_MAX;
-            const FHexData* ClosestHex = nullptr;
-            const FHexData* SecondHex = nullptr;
+            const FCachedHexData* ClosestHex = nullptr;
+            const FCachedHexData* SecondHex = nullptr;
 
-            for (const FHexData& Tile : HexData)
+            for (const FCachedHexData& Tile : HexData)
             {
                 float Dist = FVector2D::Distance(P, Tile.Pos);
                 if (Dist < ClosestDist)
@@ -577,7 +643,7 @@ void ABoardTerrain::GenerateTerrain(const TArray<AHexTile*>& HexTiles, float Hex
     GetWorld()->GetTimerManager().SetTimerForNextTick([this, HexTiles]()
     {
         for (auto Hex : HexTiles)
-            GenerateFoliage(Hex, FoliageDensityBig, FoliageDensityMedium, FoliageDensitySmall);
+            GenerateFoliage(Hex);
     });
 }
 
@@ -616,24 +682,23 @@ TArray<FVector> ABoardTerrain::GenerateProceduralFoliageForBiomeHex(AHexTile* He
     return FoliagePositions;
 }
 
-void ABoardTerrain::GenerateFoliage(AHexTile* HexTile, float PointsPerMeterBIG, float PointsPerMeterMEDIUM,
-    float PointsPerMeterSMALL)
+void ABoardTerrain::GenerateFoliage(AHexTile* HexTile, float DensityScaleBig, float DensityScaleMedium, float DensityScaleSmall)
 {
-    // Big Foliage
-    TArray<FVector> PointsForBigMesh = GenerateProceduralFoliageForBiomeHex(HexTile, PointsPerMeterBIG);
-    SpawnMeshesForHexTile(HexTile, PointsForBigMesh, 0.3f, 3, EFoliageType::Large);
+    if (!HexTile) return;
+
+    const FBiomeFoliageSettings& Settings = GetBiomeFoliageSettings(HexTile->HexType);
+
+    TArray<FVector> PointsForBigMesh = GenerateProceduralFoliageForBiomeHex(HexTile, Settings.DensityBig * DensityScaleBig);
+    SpawnMeshesForHexTile(HexTile, PointsForBigMesh, 0.3f, 3, EFoliageType::Large, Settings);
     
-    // Medium Foliage
-    TArray<FVector> PointsForMediumMesh = GenerateProceduralFoliageForBiomeHex(HexTile, PointsPerMeterMEDIUM);
-    SpawnMeshesForHexTile(HexTile, PointsForMediumMesh, 0.5f, 3, EFoliageType::Medium);
+    TArray<FVector> PointsForMediumMesh = GenerateProceduralFoliageForBiomeHex(HexTile, Settings.DensityMedium * DensityScaleMedium);
+    SpawnMeshesForHexTile(HexTile, PointsForMediumMesh, 0.5f, 3, EFoliageType::Medium, Settings);
     
-    // Small Foliage
-    TArray<FVector> PointsForSmallMesh = GenerateProceduralFoliageForBiomeHex(HexTile, PointsPerMeterSMALL);
-    SpawnMeshesForHexTile(HexTile, PointsForSmallMesh, 0.7f, 3, EFoliageType::Small);
-    
+    TArray<FVector> PointsForSmallMesh = GenerateProceduralFoliageForBiomeHex(HexTile, Settings.DensitySmall * DensityScaleSmall);
+    SpawnMeshesForHexTile(HexTile, PointsForSmallMesh, 0.7f, 3, EFoliageType::Small, Settings);
 }
 
-void ABoardTerrain::SpawnMeshesForHexTile(AHexTile* HexTile, TArray<FVector> PointPositions, float Density, float Octaves, EFoliageType FoliageType)
+void ABoardTerrain::SpawnMeshesForHexTile(AHexTile* HexTile, TArray<FVector> PointPositions, float Density, float Octaves, EFoliageType FoliageType, const FBiomeFoliageSettings& Settings)
 {
     if (!HexTile) { UE_LOG(LogTemp, Error, TEXT("HexTile is null")); return; }
     if (PointPositions.Num() == 0) { UE_LOG(LogTemp, Error, TEXT("No points for hex")); return; }
@@ -664,18 +729,6 @@ void ABoardTerrain::SpawnMeshesForHexTile(AHexTile* HexTile, TArray<FVector> Poi
 
     FRandomStream RNG(Seed + GetUniqueID());
 
-    // Single trace per hex for base Z
-    FVector HexCenter = HexTile->GetActorLocation();
-    FHitResult CenterHit;
-    float BaseZ = HexCenter.Z;
-    if (GetWorld()->LineTraceSingleByChannel(
-        CenterHit,
-        HexCenter + FVector(0, 0, 50000.f),
-        HexCenter - FVector(0, 0, 50000.f),
-        ECC_Visibility))
-    {
-        BaseZ = CenterHit.ImpactPoint.Z;
-    }
     int32 SpawnedCount = 0;
     HISM->bAutoRebuildTreeOnInstanceChanges = false;
     for (const FVector& Position : PointPositions)
@@ -685,40 +738,48 @@ void ABoardTerrain::SpawnMeshesForHexTile(AHexTile* HexTile, TArray<FVector> Poi
         switch (FoliageSize)
         {
             case EFoliageSize::LargeF:
-                Scale = RNG.FRandRange(MinScale,MaxScale);
+                Scale = RNG.FRandRange(Settings.MinScaleBig, Settings.MaxScaleBig);
                 break;
             case EFoliageSize::MediumF:
-                Scale = RNG.FRandRange(MinScale * ScaleMultiplier, MaxScale * ScaleMultiplier);
+                Scale = RNG.FRandRange(Settings.MinScaleMedium, Settings.MaxScaleMedium);
                 break;
             case EFoliageSize::SmallF:
-                Scale = RNG.FRandRange(MinScale * ScaleMultiplier, MaxScale * ScaleMultiplier );
+                Scale = RNG.FRandRange(Settings.MinScaleSmall, Settings.MaxScaleSmall);
                 break;
             default:
                 break;
         }
 
-        // Per point trace for accurate Z
+        float Noise1 = FBMNoise(Position.X * 0.1f, Position.Y * 0.1f, Octaves, 0.5f, 2.0f);
+        float Noise2 = FBMNoise(Position.X * 0.5f + 1000.f, Position.Y * 0.5f + 1000.f, Octaves, 0.5f, 2.0f);
+        float NoiseValue = (Noise1 + Noise2) * 0.5f;
+        float Threshold = FMath::Lerp(0.3f, 0.7f, Density);
+        if (NoiseValue > Threshold) { continue; }
+
         FHitResult Hit;
         FVector Start = FVector(Position.X, Position.Y, 500000.f);
         FVector End   = FVector(Position.X, Position.Y, -500000.f);
-    
-        FCollisionQueryParams Params(TEXT("FoliageSnap"), false); // false = no complex collision
+
+        FCollisionQueryParams Params(TEXT("FoliageSnap"), false);
         Params.AddIgnoredActor(HexTile);
-        
-        float Noise1 = FBMNoise(Position.X * 0.1f, Position.Y * 0.1f, Octaves, 0.5f, 2.0f);
-        float Noise2 = FBMNoise(Position.X * 0.5f + 1000.f, Position.Y * 0.5f + 1000.f, Octaves, 0.5f, 2.0f);
-        float NoiseValue = (Noise1 + Noise2) * 0.5f; // Combine octaves
-        float Threshold = FMath::Lerp(0.3f, 0.7f, Density); // Adjust threshold based on density parameter
-        if (NoiseValue > Threshold) { continue; }
-    
-        float SnappedZ = BaseZ; // fallback
+
+        float SnappedZ = 0.f;
+        FVector HitNormal = FVector::UpVector;
         if (GetWorld()->LineTraceSingleByChannel(Hit, Start, End, ECC_WorldStatic, Params))
         {
             SnappedZ = Hit.ImpactPoint.Z;
+            HitNormal = Hit.ImpactNormal;
+        }
+        else
+        {
+            continue;
         }
 
+        FQuat SlopeAlignment = FQuat::FindBetween(FVector::UpVector, HitNormal);
+        FQuat FinalRotation = SlopeAlignment * FQuat(FVector::UpVector, FMath::DegreesToRadians(Yaw));
+
         FTransform T(
-            FRotator(0.f, Yaw, 0.f),
+            FinalRotation,
             FVector(Position.X, Position.Y, SnappedZ),
             FVector(Scale));
 
@@ -801,16 +862,11 @@ void ABoardTerrain::SetHexDetailLevel(AHexTile* Tile, EHexDetailLevel Level)
     switch (Level)
     {
     case EHexDetailLevel::Full:
-        GenerateFoliage(Tile, 
-            FoliageDensityBig, 
-            FoliageDensityMedium, 
-            FoliageDensitySmall);
+        GenerateFoliage(Tile);
         break;
 
     case EHexDetailLevel::Medium:
-        GenerateFoliage(Tile, 
-            FoliageDensityBig * 0.2f, 
-            0.f, 0.f);
+        GenerateFoliage(Tile, 0.2f, 0.f, 0.f);
         break;
 
     case EHexDetailLevel::Impostor:
@@ -863,6 +919,20 @@ void ABoardTerrain::BeginPlay()
 }
 
 
+
+const FBiomeFoliageSettings& ABoardTerrain::GetBiomeFoliageSettings(EHexType HexType) const
+{
+    switch (HexType)
+    {
+    case EHexType::Forest:   return ForestFoliage;
+    case EHexType::Desert:   return DesertFoliage;
+    case EHexType::Pasture:  return PastureFoliage;
+    case EHexType::Hill:     return HillFoliage;
+    case EHexType::Fields:   return FieldsFoliage;
+    case EHexType::Mountain: return MountainFoliage;
+    default:                 return ForestFoliage;
+    }
+}
 
 UStaticMesh* ABoardTerrain::GetStaticMeshForBiome(EHexType HexType, EFoliageType FoliageType)
 {

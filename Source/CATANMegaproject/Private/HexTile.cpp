@@ -96,6 +96,10 @@ UHierarchicalInstancedStaticMeshComponent* AHexTile::GetOrCreateHISM(UStaticMesh
 	HISM->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	HISM->bAutoRebuildTreeOnInstanceChanges = false;
 	HISM->RegisterComponent();
+	for (int32 i = 0; i < Mesh->GetStaticMaterials().Num(); i++)
+	{
+		HISM->SetMaterial(i, Mesh->GetStaticMaterials()[i].MaterialInterface);
+	}
 	switch (DetailLevel)
 	{
 		case EFoliageSize::SmallF:

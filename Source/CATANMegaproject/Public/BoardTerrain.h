@@ -15,6 +15,51 @@ enum class EFoliageType : uint8
 	Large
 };
 
+USTRUCT(BlueprintType)
+struct FBiomeFoliageSettings
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float DensityBig = 0.01f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float DensityMedium = 0.03f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float DensitySmall = 0.1f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float MinScaleBig = 0.8f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float MaxScaleBig = 1.2f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float MinScaleMedium = 2.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float MaxScaleMedium = 3.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float MinScaleSmall = 2.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float MaxScaleSmall = 3.2f;
+};
+
+USTRUCT()
+struct FCachedHexData
+{
+	GENERATED_BODY()
+	
+	FVector2D Pos;
+	float Height = 0.f;
+	float Amp = 0.f;
+	EHexType Type = EHexType::Water;
+	float BiomeFloat = 0.f;
+};
+
 UCLASS()
 class CATANMEGAPROJECT_API ABoardTerrain : public AActor
 {
@@ -39,20 +84,25 @@ public:
 	int32 BiomeTextureResolution = 4096;
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Foliage Generation")
-	float FoliageDensityBig = 0.01f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Foliage Generation")
-	float FoliageDensityMedium = 0.03f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Foliage Generation")
-	float FoliageDensitySmall = 0.1f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Foliage Generation")
 	float Seed;
-	
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Foliage Generation")
-	float MinScale = 0.8f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Foliage Generation")
-	float MaxScale = 1.2f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Foliage Generation")
-	float ScaleMultiplier = 3.2f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Foliage Generation|Forest")
+	FBiomeFoliageSettings ForestFoliage;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Foliage Generation|Desert")
+	FBiomeFoliageSettings DesertFoliage;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Foliage Generation|Pasture")
+	FBiomeFoliageSettings PastureFoliage;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Foliage Generation|Hill")
+	FBiomeFoliageSettings HillFoliage;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Foliage Generation|Fields")
+	FBiomeFoliageSettings FieldsFoliage;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Foliage Generation|Mountain")
+	FBiomeFoliageSettings MountainFoliage;
 	
 	// Forest
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Foliage Generation|Biome Meshes")
@@ -187,22 +237,30 @@ public:
 	
 	TArray<FVector> GenerateProceduralFoliageForBiomeHex(AHexTile* HexTile, float PointsPerMeter);
 	
-	void GenerateFoliage(AHexTile* HexTile, float PointsPerMeterBIG, float PointsPerMeterMEDIUM, float PointsPerMeterSMALL);
+	void GenerateFoliage(AHexTile* HexTile, float DensityScaleBig = 1.f, float DensityScaleMedium = 1.f, float DensityScaleSmall = 1.f);
 	
-	void SpawnMeshesForHexTile(AHexTile* HexTile, TArray<FVector> PointPositions, float Density = 0.3f, float Octaves = 3, EFoliageType FoliageType = EFoliageType::Medium);
+	void SpawnMeshesForHexTile(AHexTile* HexTile, TArray<FVector> PointPositions, float Density, float Octaves, EFoliageType FoliageType, const FBiomeFoliageSettings& Settings);
 	
 	UStaticMesh* GetStaticMeshForBiome(EHexType HexType, EFoliageType FoliageType = EFoliageType::Medium);
+
+	const FBiomeFoliageSettings& GetBiomeFoliageSettings(EHexType HexType) const;
 	
 	void TriggerPCG(const TArray<AHexTile*>& HexTiles);
 	
-	struct FHexData
-	{
-		FVector2D Pos;
-		float Height;
-		float Amp;
-		EHexType Type;
-		float BiomeFloat;
-	};
+	float ComputeTerrainHeightAt(float WorldX, float WorldY) const;
+	FVector ComputeTerrainNormalAt(float WorldX, float WorldY) const;
+	
+	UPROPERTY()
+	TArray<FCachedHexData> CachedHexData;
+	
+	UPROPERTY()
+	float CachedHexSize = 0.f;
+	
+	TArray<float> CachedHeightGrid;
+	FVector2D CachedGridWorldMin = FVector2D::ZeroVector;
+	int32 CachedGridNumCols = 0;
+	int32 CachedGridNumRows = 0;
+	float CachedGridCellSize = 0.f;
 	
 protected:
 	virtual void BeginPlay() override;

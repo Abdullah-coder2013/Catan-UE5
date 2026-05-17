@@ -115,6 +115,33 @@ float ABoardTerrain::ComputeTerrainHeightAt(float WorldX, float WorldY) const
     }
 }
 
+float ABoardTerrain::ComputeRoadMaskAt(float WorldX, float WorldY) const
+{
+    if (CachedHexData.Num() == 0) return 0.f;
+
+    float ClosestDist = FLT_MAX;
+    float SecondDist  = FLT_MAX;
+
+    for (const FCachedHexData& Tile : CachedHexData)
+    {
+        float Dist = FVector2D::Distance(FVector2D(WorldX, WorldY), Tile.Pos);
+        if (Dist < ClosestDist)
+        {
+            SecondDist  = ClosestDist;
+            ClosestDist = Dist;
+        }
+        else if (Dist < SecondDist)
+        {
+            SecondDist = Dist;
+        }
+    }
+
+    float BorderDist = SecondDist - ClosestDist;
+    float RoadWidth  = CachedHexSize * RoadWidthGlobal;
+    float RoadMask   = FMath::Clamp(1.f - BorderDist / RoadWidth, 0.f, 1.f);
+    return RoadMask;
+}
+
 FVector ABoardTerrain::ComputeTerrainNormalAt(float WorldX, float WorldY) const
 {
     if (CachedHeightGrid.Num() == 0) return FVector::UpVector;
@@ -145,6 +172,22 @@ float ABoardTerrain::SampleRoadMask(float WorldX, float WorldY) const
     int32 PY = FMath::Clamp(FMath::FloorToInt(V * (TexSize - 1)), 0, TexSize - 1);
 
     return CachedRoadMask[PY * TexSize + PX] / 255.f;
+}
+
+float ABoardTerrain::SampleBeachMask(float WorldX, float WorldY) const
+{
+    if (CachedBeachMask.Num() == 0 || CachedRoadMaskWorldSize.X <= 0.f || CachedRoadMaskWorldSize.Y <= 0.f) return 0.f;
+
+    float U = (WorldX - CachedRoadMaskWorldMin.X) / CachedRoadMaskWorldSize.X;
+    float V = (WorldY - CachedRoadMaskWorldMin.Y) / CachedRoadMaskWorldSize.Y;
+
+    if (U < 0.f || U > 1.f || V < 0.f || V > 1.f) return 0.f;
+
+    int32 TexSize = BiomeTextureResolution;
+    int32 PX = FMath::Clamp(FMath::FloorToInt(U * (TexSize - 1)), 0, TexSize - 1);
+    int32 PY = FMath::Clamp(FMath::FloorToInt(V * (TexSize - 1)), 0, TexSize - 1);
+
+    return CachedBeachMask[PY * TexSize + PX] / 255.f;
 }
 
 ABoardTerrain::ABoardTerrain()
@@ -203,7 +246,7 @@ void ABoardTerrain::GenerateTerrain(const TArray<AHexTile*>& HexTiles, float Hex
     WorldMin.X -= BorderPadding; WorldMin.Y -= BorderPadding;
     WorldMax.X += BorderPadding; WorldMax.Y += BorderPadding;
 
-    Resolution = Resolution * (WorldScale/4);
+    const float ActualResolution = Resolution * (WorldScale / 4);
 
     float GlobalElevMin = FLT_MAX, GlobalElevMax = -FLT_MAX;
     for (AHexTile* Tile : HexTiles)
@@ -215,8 +258,8 @@ void ABoardTerrain::GenerateTerrain(const TArray<AHexTile*>& HexTiles, float Hex
     if (FMath::IsNearlyEqual(GlobalElevMin, GlobalElevMax))
         GlobalElevMax = GlobalElevMin + 1.f;
 
-    int32 NumCols = FMath::CeilToInt((WorldMax.X - WorldMin.X) / Resolution) + 1;
-    int32 NumRows = FMath::CeilToInt((WorldMax.Y - WorldMin.Y) / Resolution) + 1;
+    int32 NumCols = FMath::CeilToInt((WorldMax.X - WorldMin.X) / ActualResolution) + 1;
+    int32 NumRows = FMath::CeilToInt((WorldMax.Y - WorldMin.Y) / ActualResolution) + 1;
 
     TArray<FVector>   Vertices;
     TArray<int32>     Triangles;
@@ -314,14 +357,14 @@ void ABoardTerrain::GenerateTerrain(const TArray<AHexTile*>& HexTiles, float Hex
             HexCorners.Add(Tile.Pos + HexSize * FVector2D(FMath::Cos(Angle), FMath::Sin(Angle)));
         }
     }
-    
+
     ParallelFor(NumVerts, [&](int32 Index)
         {
                     int32 Col = Index % NumCols;
                     int32 Row = Index / NumCols;
 
-                    float WorldX = WorldMin.X + Col * Resolution;
-                    float WorldY = WorldMin.Y + Row * Resolution;
+                    float WorldX = WorldMin.X + Col * ActualResolution;
+                    float WorldY = WorldMin.Y + Row * ActualResolution;
 
                     float MinDist = FLT_MAX;
 
@@ -474,13 +517,28 @@ void ABoardTerrain::GenerateTerrain(const TArray<AHexTile*>& HexTiles, float Hex
 
                     Elevation *= (1.f - BeachMask * 0.85f);
 
-                    float RoadMask = FMath::Clamp(1.f - BorderDist / RoadWidth, 0.f, 1.f);
-                    for (const FVector2D& Corner : HexCorners)
-                    {
-                        float Dist = FVector2D::Distance(P, Corner);
-                        if (Dist < CornerClearance)
-                            RoadMask = FMath::Max(RoadMask, 1.f - Dist / CornerClearance);
-                    }
+        float RoadMask = ComputeRoadMaskAt(WorldX, WorldY);
+        for (const FVector2D& Corner : HexCorners)
+        {
+            float Dist = FVector2D::Distance(P, Corner);
+            if (Dist < CornerClearance)
+                RoadMask = FMath::Max(RoadMask, 1.f - Dist / CornerClearance);
+        }
+
+        const float Sqrt3Over2 = 0.8660254f;
+        FVector2D LocalP = P - ClosestHex->Pos;
+        float HexSDF = FMath::Max(
+            FMath::Abs(LocalP.X),
+            FMath::Max(
+                FMath::Abs(0.5f * LocalP.X + Sqrt3Over2 * LocalP.Y),
+                FMath::Abs(0.5f * LocalP.X - Sqrt3Over2 * LocalP.Y)
+            )
+        );
+        const float HexInner = HexSize * Sqrt3Over2;
+        const float BoardEdgeFade = HexSize * 0.15f;
+        float BoardMask = 1.f - FMath::Clamp((HexSDF - HexInner) / BoardEdgeFade, 0.f, 1.f);
+        BoardMask = SmoothStep(BoardMask);
+        
 
             Vertices[Index] = FVector(WorldX, WorldY, Elevation);
         UVs[Index] = FVector2D(
@@ -500,7 +558,7 @@ void ABoardTerrain::GenerateTerrain(const TArray<AHexTile*>& HexTiles, float Hex
     CachedGridWorldMin = WorldMin;
     CachedGridNumCols = NumCols;
     CachedGridNumRows = NumRows;
-    CachedGridCellSize = Resolution;
+    CachedGridCellSize = ActualResolution;
 
     // ----------------------------------------------------
     // MESH BUILD
@@ -563,10 +621,13 @@ void ABoardTerrain::GenerateTerrain(const TArray<AHexTile*>& HexTiles, float Hex
 
         float WorldW = WorldMax.X - WorldMin.X;
         float WorldH = WorldMax.Y - WorldMin.Y;
+        float MeshWorldW = (float)(NumCols - 1) * ActualResolution;
+        float MeshWorldH = (float)(NumRows - 1) * ActualResolution;
 
         CachedRoadMask.SetNum(TexSize * TexSize);
+        CachedBeachMask.SetNum(TexSize * TexSize);
         CachedRoadMaskWorldMin = WorldMin;
-        CachedRoadMaskWorldSize = FVector2D(WorldW, WorldH);
+        CachedRoadMaskWorldSize = FVector2D(MeshWorldW, MeshWorldH);
 
         ParallelFor(TexSize * TexSize, [&](int32 Idx)
         {
@@ -576,8 +637,8 @@ void ABoardTerrain::GenerateTerrain(const TArray<AHexTile*>& HexTiles, float Hex
             float U = PX / (float)(TexSize - 1);
             float V = PY / (float)(TexSize - 1);
 
-            float WX = WorldMin.X + U * WorldW;
-            float WY = WorldMin.Y + V * WorldH;
+            float WX = WorldMin.X + U * MeshWorldW;
+            float WY = WorldMin.Y + V * MeshWorldH;
 
             FVector2D P(WX, WY);
 
@@ -637,6 +698,7 @@ void ABoardTerrain::GenerateTerrain(const TArray<AHexTile*>& HexTiles, float Hex
             Fields   /= Sum;
 
             float BeachMask = FMath::Clamp((ClosestDist - EdgeStart) / EdgeFade, 0.f, 1.f);
+            CachedBeachMask[Idx] = (uint8)(FMath::Clamp(BeachMask, 0.f, 1.f) * 255);
             float RoadMask = FMath::Clamp(1.f - BorderDist / RoadWidth, 0.f, 1.f);
             for (const FVector2D& Corner : HexCorners)
             {
@@ -646,19 +708,33 @@ void ABoardTerrain::GenerateTerrain(const TArray<AHexTile*>& HexTiles, float Hex
             }
             CachedRoadMask[Idx] = (uint8)(FMath::Clamp(RoadMask, 0.f, 1.f) * 255);
 
-            Pixels1[Idx] = FColor(
-                (uint8)(FMath::Clamp(Forest,   0.f, 1.f) * 255),
-                (uint8)(FMath::Clamp(Desert,   0.f, 1.f) * 255),
-                (uint8)(FMath::Clamp(Hill,     0.f, 1.f) * 255),
-                (uint8)(FMath::Clamp(Mountain, 0.f, 1.f) * 255)
+            const float Sqrt3Over2 = 0.8660254f;
+            FVector2D LocalP = P - ClosestHex->Pos;
+            float HexSDF = FMath::Max(
+                FMath::Abs(LocalP.X),
+                FMath::Max(
+                    FMath::Abs(0.5f * LocalP.X + Sqrt3Over2 * LocalP.Y),
+                    FMath::Abs(0.5f * LocalP.X - Sqrt3Over2 * LocalP.Y)
+                )
             );
+            const float HexInner = HexSize * Sqrt3Over2;
+            const float BoardEdgeFade = HexSize * 0.15f;
+            float BoardMask = 1.f - FMath::Clamp((HexSDF - HexInner) / BoardEdgeFade, 0.f, 1.f);
+            BoardMask = SmoothStep(BoardMask);
 
-            Pixels2[Idx] = FColor(
-                (uint8)(FMath::Clamp(Pasture,   0.f, 1.f) * 255),
-                (uint8)(FMath::Clamp(Fields,    0.f, 1.f) * 255),
-                (uint8)(FMath::Clamp(BeachMask, 0.f, 1.f) * 255),
-                (uint8)(FMath::Clamp(RoadMask,  0.f, 1.f) * 255)
-            );
+            Pixels1[Idx] = FColor(
+    (uint8)(FMath::Clamp(Forest,   0.f, 1.f) * BoardMask * 255),
+    (uint8)(FMath::Clamp(Desert,   0.f, 1.f) * BoardMask * 255),
+    (uint8)(FMath::Clamp(Hill,     0.f, 1.f) * BoardMask * 255),
+    (uint8)(FMath::Clamp(Mountain, 0.f, 1.f) * BoardMask * 255)
+);
+
+Pixels2[Idx] = FColor(
+    (uint8)(FMath::Clamp(Pasture,  0.f, 1.f) * BoardMask * 255),
+    (uint8)(FMath::Clamp(Fields,   0.f, 1.f) * BoardMask * 255),
+    (uint8)(FMath::Clamp(FMath::Max(BeachMask, 1.f - BoardMask), 0.f, 1.f) * 255),
+    (uint8)(FMath::Clamp(RoadMask, 0.f, 1.f) * BoardMask * 255)
+);
         });
 
         Mip1.BulkData.Unlock();
@@ -687,7 +763,10 @@ void ABoardTerrain::GenerateTerrain(const TArray<AHexTile*>& HexTiles, float Hex
     GetWorld()->GetTimerManager().SetTimerForNextTick([this, HexTiles]()
     {
         for (auto Hex : HexTiles)
+        {
             GenerateFoliage(Hex);
+            GenerateBeachFoliage(Hex);
+        }
     });
 }
 
@@ -740,6 +819,85 @@ void ABoardTerrain::GenerateFoliage(AHexTile* HexTile, float DensityScaleBig, fl
     
     TArray<FVector> PointsForSmallMesh = GenerateProceduralFoliageForBiomeHex(HexTile, Settings.DensitySmall * DensityScaleSmall);
     SpawnMeshesForHexTile(HexTile, PointsForSmallMesh, 0.7f, 3, EFoliageType::Small, Settings);
+}
+
+void ABoardTerrain::GenerateBeachFoliage(AHexTile* HexTile)
+{
+    if (!HexTile || HexTile->HexType == EHexType::Water) return;
+
+    FVector HexLocation = HexTile->GetActorLocation();
+    float HexRadius = HexTile->GetHexOuterRadius();
+
+    float EdgeStartVal = HexRadius * 0.95f;
+    float EdgeFadeVal = HexRadius * 0.8f;
+    float InnerR = EdgeStartVal;
+    float OuterR = EdgeStartVal + EdgeFadeVal * 0.6f;
+
+    FRandomStream RNG(Seed + HexTile->GetUniqueID() + 999);
+
+    auto PickMesh = [&](const TArray<UStaticMesh*>& Meshes) -> UStaticMesh*
+    {
+        if (Meshes.Num() == 0) return nullptr;
+        return Meshes[RNG.RandRange(0, Meshes.Num() - 1)];
+    };
+
+    auto SpawnBeachSize = [&](const TArray<UStaticMesh*>& Meshes, float Density,
+        EFoliageSize Size, float MinScale, float MaxScale, bool bCastShadow)
+    {
+        if (Meshes.Num() == 0) return;
+        UStaticMesh* Mesh = PickMesh(Meshes);
+        if (!Mesh) return;
+
+        UHierarchicalInstancedStaticMeshComponent* HISM = HexTile->GetOrCreateHISM(Mesh, Size);
+        if (!HISM) return;
+
+        float RingAreaM2 = PI * (OuterR * OuterR - InnerR * InnerR) / 10000.f;
+        int32 NumPoints = FMath::Max(1, FMath::RoundToInt(RingAreaM2 * Density));
+
+        HISM->bAutoRebuildTreeOnInstanceChanges = false;
+
+        float InnerRSq = InnerR * InnerR;
+        float OuterRSq = OuterR * OuterR;
+
+        for (int32 i = 0; i < NumPoints; i++)
+        {
+            float Angle = RNG.FRandRange(0.f, 2.f * PI);
+            float R = FMath::Sqrt(RNG.FRandRange(InnerRSq, OuterRSq));
+            float PX = HexLocation.X + R * FMath::Cos(Angle);
+            float PY = HexLocation.Y + R * FMath::Sin(Angle);
+
+            if (ComputeRoadMaskAt(PX, PY) > FoliageClearanceThreshold) continue;
+            if (SampleBeachMask(PX, PY) < 0.05f) continue;
+
+            FHitResult Hit;
+            FVector Start(PX, PY, 500000.f);
+            FVector End(PX, PY, -500000.f);
+            FCollisionQueryParams Params(TEXT("BeachFoliage"), false);
+            Params.AddIgnoredActor(HexTile);
+
+            if (!GetWorld()->LineTraceSingleByChannel(Hit, Start, End, ECC_WorldStatic, Params)) continue;
+
+            float Yaw = RNG.FRandRange(0.f, 360.f);
+            float Scale = RNG.FRandRange(MinScale, MaxScale);
+            FQuat SlopeAlign = FQuat::FindBetween(FVector::UpVector, Hit.ImpactNormal);
+            FQuat Rotation = SlopeAlign * FQuat(FVector::UpVector, FMath::DegreesToRadians(Yaw));
+
+            HISM->AddInstance(FTransform(Rotation, Hit.ImpactPoint, FVector(Scale)), true);
+        }
+
+        HISM->BuildTreeIfOutdated(false, true);
+        HISM->SetCastShadow(bCastShadow);
+        if (bCastShadow)
+            HISM->ShadowCacheInvalidationBehavior = EShadowCacheInvalidationBehavior::Static;
+        HISM->SetCullDistances(0, 10000000);
+    };
+
+    SpawnBeachSize(BigBeachMeshes, BeachFoliage.DensityBig, EFoliageSize::LargeF,
+        BeachFoliage.MinScaleBig, BeachFoliage.MaxScaleBig, true);
+    SpawnBeachSize(MediumBeachMeshes, BeachFoliage.DensityMedium, EFoliageSize::MediumF,
+        BeachFoliage.MinScaleMedium, BeachFoliage.MaxScaleMedium, false);
+    SpawnBeachSize(SmallBeachMeshes, BeachFoliage.DensitySmall, EFoliageSize::SmallF,
+        BeachFoliage.MinScaleSmall, BeachFoliage.MaxScaleSmall, false);
 }
 
 void ABoardTerrain::SpawnMeshesForHexTile(AHexTile* HexTile, TArray<FVector> PointPositions, float Density, float Octaves, EFoliageType FoliageType, const FBiomeFoliageSettings& Settings)
@@ -800,7 +958,9 @@ void ABoardTerrain::SpawnMeshesForHexTile(AHexTile* HexTile, TArray<FVector> Poi
         float Threshold = FMath::Lerp(0.3f, 0.7f, Density);
         if (NoiseValue > Threshold) { continue; }
 
-        if (SampleRoadMask(Position.X, Position.Y) > FoliageClearanceThreshold) continue;
+        if (ComputeRoadMaskAt(Position.X, Position.Y) > FoliageClearanceThreshold) continue;
+
+        if (SampleBeachMask(Position.X, Position.Y) > BeachClearanceThreshold) continue;
 
         FHitResult Hit;
         FVector Start = FVector(Position.X, Position.Y, 500000.f);

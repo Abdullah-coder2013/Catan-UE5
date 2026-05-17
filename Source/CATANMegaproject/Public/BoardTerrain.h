@@ -103,6 +103,9 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Foliage Generation|Mountain")
 	FBiomeFoliageSettings MountainFoliage;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Foliage Generation|Beach")
+	FBiomeFoliageSettings BeachFoliage;
 	
 	// Forest
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Foliage Generation|Biome Meshes")
@@ -151,6 +154,14 @@ public:
 	TArray<UStaticMesh*> MediumMountainMeshes;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Foliage Generation|Biome Meshes")
 	TArray<UStaticMesh*> SmallMountainMeshes;
+
+	// Beach
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Foliage Generation|Beach Meshes")
+	TArray<UStaticMesh*> BigBeachMeshes;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Foliage Generation|Beach Meshes")
+	TArray<UStaticMesh*> MediumBeachMeshes;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Foliage Generation|Beach Meshes")
+	TArray<UStaticMesh*> SmallBeachMeshes;
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PCG")
 	UPCGComponent* PCGComponent;
@@ -190,6 +201,9 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Foliage Generation", meta = (ClampMin = "0.0", ClampMax = "1.0"))
 	float FoliageClearanceThreshold = 0.3f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Foliage Generation|Beach", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float BeachClearanceThreshold = 0.1f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Terrain|Detail")
 	float DetailAmplitudeMultiplier = 0.15f;
@@ -254,6 +268,7 @@ public:
 	void TriggerPCG(const TArray<AHexTile*>& HexTiles);
 	
 	float ComputeTerrainHeightAt(float WorldX, float WorldY) const;
+	float ComputeRoadMaskAt(float WorldX, float WorldY) const;
 	FVector ComputeTerrainNormalAt(float WorldX, float WorldY) const;
 	
 	UPROPERTY()
@@ -274,6 +289,13 @@ public:
 	FVector2D CachedRoadMaskWorldSize = FVector2D::ZeroVector;
 
 	float SampleRoadMask(float WorldX, float WorldY) const;
+
+	UPROPERTY()
+	TArray<uint8> CachedBeachMask;
+
+	float SampleBeachMask(float WorldX, float WorldY) const;
+
+	void GenerateBeachFoliage(AHexTile* HexTile);
 	
 protected:
 	virtual void BeginPlay() override;

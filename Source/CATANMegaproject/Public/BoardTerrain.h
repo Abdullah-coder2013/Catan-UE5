@@ -185,6 +185,12 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Terrain|Material")
 	float RoadWidthGlobal = 0.12f;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Terrain|Road", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float CornerClearanceRadius = 0.15f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Foliage Generation", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float FoliageClearanceThreshold = 0.3f;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Terrain|Detail")
 	float DetailAmplitudeMultiplier = 0.15f;
 
@@ -261,6 +267,13 @@ public:
 	int32 CachedGridNumCols = 0;
 	int32 CachedGridNumRows = 0;
 	float CachedGridCellSize = 0.f;
+
+	UPROPERTY()
+	TArray<uint8> CachedRoadMask;
+	FVector2D CachedRoadMaskWorldMin = FVector2D::ZeroVector;
+	FVector2D CachedRoadMaskWorldSize = FVector2D::ZeroVector;
+
+	float SampleRoadMask(float WorldX, float WorldY) const;
 	
 protected:
 	virtual void BeginPlay() override;

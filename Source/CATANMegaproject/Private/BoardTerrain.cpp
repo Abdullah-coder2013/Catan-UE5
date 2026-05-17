@@ -131,6 +131,22 @@ FVector ABoardTerrain::ComputeTerrainNormalAt(float WorldX, float WorldY) const
     return FVector(-Dx, -Dy, 1.f).GetSafeNormal();
 }
 
+float ABoardTerrain::SampleRoadMask(float WorldX, float WorldY) const
+{
+    if (CachedRoadMask.Num() == 0 || CachedRoadMaskWorldSize.X <= 0.f || CachedRoadMaskWorldSize.Y <= 0.f) return 0.f;
+
+    float U = (WorldX - CachedRoadMaskWorldMin.X) / CachedRoadMaskWorldSize.X;
+    float V = (WorldY - CachedRoadMaskWorldMin.Y) / CachedRoadMaskWorldSize.Y;
+
+    if (U < 0.f || U > 1.f || V < 0.f || V > 1.f) return 0.f;
+
+    int32 TexSize = BiomeTextureResolution;
+    int32 PX = FMath::Clamp(FMath::FloorToInt(U * (TexSize - 1)), 0, TexSize - 1);
+    int32 PY = FMath::Clamp(FMath::FloorToInt(V * (TexSize - 1)), 0, TexSize - 1);
+
+    return CachedRoadMask[PY * TexSize + PX] / 255.f;
+}
+
 ABoardTerrain::ABoardTerrain()
 {
     PrimaryActorTick.bCanEverTick = false;
@@ -287,6 +303,17 @@ void ABoardTerrain::GenerateTerrain(const TArray<AHexTile*>& HexTiles, float Hex
     }
 
     CachedHexData = HexData;
+
+    TArray<FVector2D> HexCorners;
+    const float CornerClearance = CornerClearanceRadius * HexSize;
+    for (const FCachedHexData& Tile : HexData)
+    {
+        for (int32 k = 0; k < 6; k++)
+        {
+            float Angle = k * (PI / 3.f) + PI / 6.f;
+            HexCorners.Add(Tile.Pos + HexSize * FVector2D(FMath::Cos(Angle), FMath::Sin(Angle)));
+        }
+    }
     
     ParallelFor(NumVerts, [&](int32 Index)
         {
@@ -448,6 +475,12 @@ void ABoardTerrain::GenerateTerrain(const TArray<AHexTile*>& HexTiles, float Hex
                     Elevation *= (1.f - BeachMask * 0.85f);
 
                     float RoadMask = FMath::Clamp(1.f - BorderDist / RoadWidth, 0.f, 1.f);
+                    for (const FVector2D& Corner : HexCorners)
+                    {
+                        float Dist = FVector2D::Distance(P, Corner);
+                        if (Dist < CornerClearance)
+                            RoadMask = FMath::Max(RoadMask, 1.f - Dist / CornerClearance);
+                    }
 
             Vertices[Index] = FVector(WorldX, WorldY, Elevation);
         UVs[Index] = FVector2D(
@@ -531,6 +564,10 @@ void ABoardTerrain::GenerateTerrain(const TArray<AHexTile*>& HexTiles, float Hex
         float WorldW = WorldMax.X - WorldMin.X;
         float WorldH = WorldMax.Y - WorldMin.Y;
 
+        CachedRoadMask.SetNum(TexSize * TexSize);
+        CachedRoadMaskWorldMin = WorldMin;
+        CachedRoadMaskWorldSize = FVector2D(WorldW, WorldH);
+
         ParallelFor(TexSize * TexSize, [&](int32 Idx)
         {
             int32 PX = Idx % TexSize;
@@ -601,6 +638,13 @@ void ABoardTerrain::GenerateTerrain(const TArray<AHexTile*>& HexTiles, float Hex
 
             float BeachMask = FMath::Clamp((ClosestDist - EdgeStart) / EdgeFade, 0.f, 1.f);
             float RoadMask = FMath::Clamp(1.f - BorderDist / RoadWidth, 0.f, 1.f);
+            for (const FVector2D& Corner : HexCorners)
+            {
+                float Dist = FVector2D::Distance(P, Corner);
+                if (Dist < CornerClearance)
+                    RoadMask = FMath::Max(RoadMask, 1.f - Dist / CornerClearance);
+            }
+            CachedRoadMask[Idx] = (uint8)(FMath::Clamp(RoadMask, 0.f, 1.f) * 255);
 
             Pixels1[Idx] = FColor(
                 (uint8)(FMath::Clamp(Forest,   0.f, 1.f) * 255),
@@ -755,6 +799,8 @@ void ABoardTerrain::SpawnMeshesForHexTile(AHexTile* HexTile, TArray<FVector> Poi
         float NoiseValue = (Noise1 + Noise2) * 0.5f;
         float Threshold = FMath::Lerp(0.3f, 0.7f, Density);
         if (NoiseValue > Threshold) { continue; }
+
+        if (SampleRoadMask(Position.X, Position.Y) > FoliageClearanceThreshold) continue;
 
         FHitResult Hit;
         FVector Start = FVector(Position.X, Position.Y, 500000.f);
